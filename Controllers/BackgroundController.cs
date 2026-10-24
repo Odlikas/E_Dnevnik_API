@@ -77,6 +77,7 @@ namespace E_Dnevnik_API.Controllers
             int scraped = 0,
                 remindersSent = 0,
                 failed = 0;
+            var backedOff = false;
 
             foreach (var user in emails)
             {
@@ -95,17 +96,30 @@ namespace E_Dnevnik_API.Controllers
                         var cookies = _sessionStore.GetCookies(user.ActiveToken!);
                         if (cookies != null)
                         {
-                            using var handler = new System.Net.Http.HttpClientHandler
-                            {
-                                UseCookies = true,
-                                CookieContainer = cookies,
-                            };
-                            using var client = new System.Net.Http.HttpClient(handler)
-                            {
-                                Timeout = TimeSpan.FromSeconds(60),
-                            };
+                            using var client = CarnetHttp.CreateClient(
+                                cookies,
+                                CarnetRequestSource.Background,
+                                user.Email,
+                                TimeSpan.FromSeconds(60)
+                            );
 
-                            var grades = await _gradesScraperService.ScrapeSubjects(client);
+                            Models.ScrapeSubjects.SubjectScrapeResult grades;
+                            try
+                            {
+                                grades = await _gradesScraperService.ScrapeSubjects(client);
+                            }
+                            catch (Exception ex) when (CarnetBackoff.ShouldBackOff(ex))
+                            {
+                                // CARNET je preopterećen (429/5xx/timeout) - prekidamo cijeli run, idući je za par sati
+                                _logger.LogWarning(
+                                    ex,
+                                    "[Background] CARNET backoff: prekidam run nakon {Scraped} od {Total} korisnika",
+                                    scraped,
+                                    emails.Count
+                                );
+                                backedOff = true;
+                                break;
+                            }
 
                             // Update Postgres cache
                             var cache = await _db.StudentCache.FindAsync(user.Email);
@@ -158,6 +172,7 @@ namespace E_Dnevnik_API.Controllers
                     scraped,
                     remindersSent,
                     failed,
+                    backedOff,
                     total = emails.Count,
                 }
             );
