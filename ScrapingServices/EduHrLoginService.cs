@@ -15,21 +15,12 @@ namespace E_Dnevnik_API.ScrapingServices
     {
         private const string LoginUrl = "https://ocjene.skole.hr/login";
 
-        // 120 sekundi zbog težih endpointa koji prolaze kroz puno stranica zaredom (npr. different grades)
-        private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(120);
-
         // logira korisnika na e-dnevnik i vraća http klijent s aktivnom sesijom
         // pozivatelj je odgovoran za dispose klijenta (using var)
         public static async Task<LoginResult> LoginAsync(string email, string password)
         {
-            var handler = new HttpClientHandler
-            {
-                UseCookies = true,
-                CookieContainer = new CookieContainer(),
-            };
-
-            var client = new HttpClient(handler) { Timeout = RequestTimeout };
-            client.DefaultRequestHeaders.Clear();
+            var cookies = new CookieContainer();
+            var client = CarnetHttp.CreateClient(cookies, CarnetRequestSource.Login, email);
 
             var loginPageResponse = await client.GetAsync(LoginUrl);
             var loginPageContent = await loginPageResponse.Content.ReadAsStringAsync();
@@ -81,7 +72,7 @@ namespace E_Dnevnik_API.ScrapingServices
             // i klijent i cookie container vraćamo - pozivatelj odlučuje što zadržati
             return new LoginResult(
                 client,
-                handler.CookieContainer,
+                cookies,
                 StatusCodes.Status200OK,
                 string.Empty
             );

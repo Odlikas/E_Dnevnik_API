@@ -14,7 +14,7 @@
 
 ## Project Context — Read This First
 
-This backend serves **Odlikas**, a Flutter mobile app for Croatian secondary school students. The app scrapes academic data (grades, schedule, tests, absences) from the Croatian national school system (**CARNET / e-Dnevnik**, hosted at `ocjene.skole.hr`). The team has explicit permission from CARNET to scrape, but must be a responsible API citizen — no hammering their servers.
+This backend serves **Odlikas**, a Flutter mobile app for Croatian secondary school students. The app scrapes academic data (grades, schedule, tests, absences) from the Croatian national school system (**CARNET / e-Dnevnik**, hosted at `ocjene.skole.hr`). CARNET has not formally approved or rejected scraping. Behave as a responsible API citizen — no hammering their servers.
 
 ### The app's purpose
 

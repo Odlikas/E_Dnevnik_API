@@ -79,7 +79,7 @@ Authorization: Bearer base64encodedtoken==
 - Token lifetime: **24 hours sliding window** — every successful API call resets the 24h timer
 - Brute force: **5 failed login attempts = 15-minute lockout** on that email, returns `429`
 - Server restart: all tokens invalidated (Heroku eco dynos restart every 24h) → `401` → re-login
-- `ScrapeNewGrades` and `ScrapeNewTests` are refreshed server-side every 5 minutes for active sessions and served from cache — first call after login takes ~2s, repeat calls are instant
+- `ScrapeNewGrades` and `ScrapeNewTests` are fetched live on a cache miss and cached server-side for 10 minutes per session (no background polling) — first call takes ~2s, repeat calls within 10 minutes are instant
 
 ---
 

@@ -158,7 +158,9 @@ else
 {
     builder.Services.AddCors(options => options.AddDefaultPolicy(policy => policy.WithOrigins())); // nema dopuštenih origina = browseri dobivaju CORS grešku
 }
-builder.Services.AddHostedService<NewDataRefreshService>();
+// brojanje zahtjeva prema CARNET-u + dnevni sažetak u logu
+builder.Services.AddSingleton(CarnetRequestStats.Shared);
+builder.Services.AddHostedService<E_Dnevnik_API.Services.CarnetRequestStatsReporter>();
 
 builder.Services.AddScoped<E_Dnevnik_API.Services.CacheService>();
 builder.Services.AddScoped<E_Dnevnik_API.Services.FcmService>();
