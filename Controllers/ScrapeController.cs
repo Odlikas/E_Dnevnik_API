@@ -66,11 +66,8 @@ namespace E_Dnevnik_API.Controllers
 
         // --- Helpers ---
 
-        private static HttpClient CreateClient(CookieContainer cookies)
-        {
-            var handler = new HttpClientHandler { UseCookies = true, CookieContainer = cookies };
-            return new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
-        }
+        private static HttpClient CreateClient(CookieContainer cookies, string? email) =>
+            CarnetHttp.CreateClient(cookies, CarnetRequestSource.UserScrape, email);
 
         // Validates token and resolves both cookies and email. Returns null values on failure.
         private (string? token, CookieContainer? cookies, string? email) ResolveSession()
@@ -96,7 +93,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<SubjectScrapeResult>(
@@ -148,7 +145,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 // Cache is a per-student JSON dict keyed by subjectId
@@ -215,7 +212,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<StudentProfileResult>(
@@ -255,7 +252,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<
@@ -297,7 +294,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<ScheduleResult>(
@@ -337,7 +334,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<AbsencesResult>(
@@ -379,7 +376,7 @@ namespace E_Dnevnik_API.Controllers
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var (data, cachedAt, fromCache) = await _cache.GetOrFetch<
@@ -430,9 +427,12 @@ namespace E_Dnevnik_API.Controllers
                 _memoryCache.TryGetValue<NewGradesResult>($"newgrades:{token}", out var cached)
                 && cached is not null
             )
+            {
+                CarnetRequestStats.Shared.RecordCacheHit();
                 return Ok(cached);
+            }
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, SessionStore.GetEmailByToken(token));
             try
             {
                 var result = await _newGradesScraperService.ScrapeNewGrades(client);
@@ -461,9 +461,12 @@ namespace E_Dnevnik_API.Controllers
                 _memoryCache.TryGetValue<NewTestsResult>($"newtests:{token}", out var cached)
                 && cached is not null
             )
+            {
+                CarnetRequestStats.Shared.RecordCacheHit();
                 return Ok(cached);
+            }
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, SessionStore.GetEmailByToken(token));
             try
             {
                 var result = await _newTestsScraperService.ScrapeNewTests(client);
@@ -481,13 +484,13 @@ namespace E_Dnevnik_API.Controllers
             ActionResult<Dictionary<string, string>>
         > CalculateMissedClassPercentages()
         {
-            var (_, cookies, _) = ResolveSession();
+            var (_, cookies, email) = ResolveSession();
             if (cookies is null)
                 return Unauthorized(
                     "Sesija je istekla ili token nije valjan. Potrebna je ponovna prijava."
                 );
 
-            using var client = CreateClient(cookies);
+            using var client = CreateClient(cookies, email);
             try
             {
                 var scheduleData = await _scheduleTableScraperService.ScrapeScheduleTable(client);

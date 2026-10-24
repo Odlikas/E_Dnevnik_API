@@ -1,5 +1,6 @@
 using E_Dnevnik_API.Database;
 using E_Dnevnik_API.Database.Models;
+using E_Dnevnik_API.ScrapingServices;
 using Newtonsoft.Json;
 
 namespace E_Dnevnik_API.Services
@@ -54,6 +55,7 @@ namespace E_Dnevnik_API.Services
             {
                 cache.LastActiveAt = DateTime.UtcNow;
                 await _db.SaveChangesAsync();
+                CarnetRequestStats.Shared.RecordCacheHit();
                 return (JsonConvert.DeserializeObject<T>(getData(cache)!)!, cachedAt!.Value, true);
             }
 
