@@ -13,7 +13,8 @@ Backend REST API for the **Odlikaš** mobile app — a companion for the Croatia
 - Absence tracking
 - Upcoming test schedule
 - Student profile and school class info
-- Background polling — detects new grades and tests since last check
+- New grades and new tests since last check (fetched on demand, cached 10 min per session)
+- Twice-daily background grade check (15:00 and 22:00, triggered by a Firebase function) with 500 ms between users
 - Push notifications on grade drop (FCM)
 - Leaderboard — opt-in anonymous GPA ranking by school program
 - Pomodoro session tracking
@@ -63,6 +64,9 @@ E_Dnevnik_API/
 │   ├── NewGradesScraperService       # Delta detection (new grades only)
 │   ├── NewTestsScraperService
 │   ├── EduHrLoginService             # CSRF-aware login, class activation
+│   ├── CarnetHttp                    # Shared HttpClient factory for ocjene.skole.hr (User-Agent, timeout, request counting)
+│   ├── CarnetRequestStats            # In-memory request counters (counts only, no PII)
+│   ├── CarnetBackoff                 # Stop background runs on 429 / 5xx / timeout
 │   ├── SessionStore                  # In-memory session management
 │   └── LoginBruteForceProtection
 ├── Services/             # Application services
@@ -70,11 +74,12 @@ E_Dnevnik_API/
 │   ├── FcmService                    # Firebase push notifications
 │   ├── GradeChangeDetectionService   # Detects grade drops, triggers task generation
 │   ├── TaskGenerationService         # OpenAI-generated study tasks on grade drop
-│   └── NewDataRefreshService         # Background hosted service (polling)
+│   └── CarnetRequestStatsReporter    # Logs a daily summary of requests made to e-Dnevnik
 ├── E_Dnevnik_API.Tests/  # xUnit test suite
 │   ├── Unit/
 │   │   ├── BruteForceProtectionTests
 │   │   ├── CacheServiceTests
+│   │   ├── CarnetGoodCitizenTests
 │   │   └── PomodoroCapTests
 │   └── Scrapers/
 │       ├── SubjectScraperTests
@@ -203,6 +208,7 @@ dotnet test
 |---|---|
 | `Unit/BruteForceProtectionTests` | IsBlocked after 5 failures, case-insensitive matching, per-email isolation, reset on success |
 | `Unit/CacheServiceTests` | Fresh cache hit (no fetch), stale cache miss, force-refresh within cooldown (suppressed), force-refresh after cooldown (allowed) |
+| `Unit/CarnetGoodCitizenTests` | User-Agent and timeout on created clients, request counting by source, unique-user counting, counter reset, backoff decisions (429/5xx/timeout vs 4xx), daily-summary scheduling across DST |
 | `Unit/PomodoroCapTests` | 8th session succeeds, 9th session returns `capped: true`, yesterday's cap does not block today |
 | `Scrapers/SubjectScraperTests` | HTML parsing of subject names, professors, grades, subject IDs; `ExtractNumbers` against real href patterns |
 | `Scrapers/AbsenceScraperTests` | Absence record parsing from fixture HTML |
@@ -224,6 +230,15 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 - HSTS enforced in production (365-day max-age, includeSubDomains)
 - Security headers: `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Content-Security-Policy: default-src 'none'`, `X-Permitted-Cross-Domain-Policies: none`
 - CORS blocks all browser origins in production (API is mobile-only)
+
+### Traffic to e-Dnevnik (`ocjene.skole.hr`)
+
+CARNET has not formally approved or rejected scraping, so the API tries to keep its load on e-Dnevnik low and visible:
+
+- Every request carries the User-Agent `Odlikas/1.0 (+https://odlikas.web.app; odlikas.hr@gmail.com)`. All clients are built by `CarnetHttp.CreateClient`.
+- No continuous polling. Data is fetched when the user asks for it and cached (profile and schedule 7 d, grades 2 h, tests and absences 1 h, grade history 24 h, new grades and new tests 10 min). Force refresh has a 15-minute cooldown.
+- The only scheduled job is `POST /api/Background/CheckNewGrades`, called twice a day (15:00 and 22:00) by a Firebase function. It waits 500 ms between users and stops the whole run if e-Dnevnik returns `429` or `5xx` or times out.
+- Outgoing requests are counted by source (login, user-triggered scrape, background job) along with cache hits. A summary line (total requests, unique users, requests per user) is logged daily at midnight Europe/Zagreb and on shutdown. Counters live only in memory and contain no emails.
 
 ---
 

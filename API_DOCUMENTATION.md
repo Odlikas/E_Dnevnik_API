@@ -263,8 +263,9 @@ The keys are Croatian month names (`sijecanj`, `veljaca`, `ozujak`, `travanj`,
 **`GET /api/Scraper/ScrapeNewGrades`**
 
 Returns grades that have been recently entered by teachers. This endpoint is
-**cached server-side** — the server refreshes it every 5 minutes in the background
-for all active sessions, so repeat calls return instantly.
+**cached server-side** for 10 minutes per session. The first call (cache miss) fetches
+live from e-Dnevnik; repeat calls within 10 minutes return instantly. There is no
+background polling.
 
 **Request:**
 ```
@@ -301,7 +302,7 @@ Authorization: Bearer <token>
 **`GET /api/Scraper/ScrapeNewTests`**
 
 Returns exams that have been recently added by teachers. Also **cached server-side**
-and refreshed every 5 minutes — same caching behaviour as new grades.
+for 10 minutes per session — same caching behaviour as new grades.
 
 **Request:**
 ```
@@ -583,9 +584,9 @@ Response: `200 OK`
   page to find the final grade. If neither exists, `grade` is returned as `"N/A"`.
 
 - **New grades / new tests caching:** The server caches these two endpoints per
-  user session and refreshes them automatically every 5 minutes in the background.
-  The first call after login will be slow (~2s). All calls within the next 5 minutes
-  return the cached result instantly.
+  user session for 10 minutes. They are not refreshed in the background, so the
+  first call after login (or after the cache expires) is fetched live and takes ~2s.
+  All calls within the next 10 minutes return the cached result instantly.
 
 - **School year auto-selection:** After login, the API automatically activates the
   most recent school year on e-Dnevnik. This ensures that endpoints like subjects
