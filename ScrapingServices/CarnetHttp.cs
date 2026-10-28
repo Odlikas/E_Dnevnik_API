@@ -15,7 +15,7 @@ namespace E_Dnevnik_API.ScrapingServices
     public static class CarnetHttp
     {
         public const string UserAgent =
-            "Odlikas/1.0 (+https://odlikas.web.app; odlikas.hr@gmail.com)";
+            "Odlikas/1.0 (+https://odlikas.hr; info@odlikas.hr)";
 
         // 120 sekundi zbog težih endpointa koji prolaze kroz puno stranica zaredom (npr. different grades)
         public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(120);
