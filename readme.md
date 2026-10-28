@@ -235,7 +235,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 
 CARNET has not formally approved or rejected scraping, so the API tries to keep its load on e-Dnevnik low and visible:
 
-- Every request carries the User-Agent `Odlikas/1.0 (+https://odlikas.web.app; odlikas.hr@gmail.com)`. All clients are built by `CarnetHttp.CreateClient`.
+- Every request carries the User-Agent `Odlikas/1.0 (+https://odlikas.hr; info@odlikas.hr)`. All clients are built by `CarnetHttp.CreateClient`.
 - No continuous polling. Data is fetched when the user asks for it and cached (profile and schedule 7 d, grades 2 h, tests and absences 1 h, grade history 24 h, new grades and new tests 10 min). Force refresh has a 15-minute cooldown.
 - The only scheduled job is `POST /api/Background/CheckNewGrades`, called twice a day (15:00 and 22:00) by a Firebase function. It waits 500 ms between users and stops the whole run if e-Dnevnik returns `429` or `5xx` or times out.
 - Outgoing requests are counted by source (login, user-triggered scrape, background job) along with cache hits. A summary line (total requests, unique users, requests per user) is logged daily at midnight Europe/Zagreb and on shutdown. Counters live only in memory and contain no emails.
