@@ -35,13 +35,17 @@ namespace E_Dnevnik_API.V2.Sync
     }
 
     // čisti Npgsql kao uloga ednevnik_service; piše samo ono što joj grantovi dopuštaju
+    // Supabase baza za /v2/sync, namjerno ne kao goli NpgsqlDataSource u DI-ju
+    // (EF Core bi ga onda koristio i za staru ednevnik bazu)
+    public sealed record SupabaseDb(NpgsqlDataSource DataSource);
+
     public class SyncRepository : ISyncRepository
     {
         private readonly NpgsqlDataSource? _db;
 
         public SyncRepository(IServiceProvider services)
         {
-            _db = services.GetService<NpgsqlDataSource>();
+            _db = services.GetService<SupabaseDb>()?.DataSource;
         }
 
         public bool IsConfigured => _db != null;
