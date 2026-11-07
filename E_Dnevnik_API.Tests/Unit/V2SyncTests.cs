@@ -2,11 +2,9 @@ using System.Net;
 using E_Dnevnik_API.Models.ScrapeStudentProfile;
 using E_Dnevnik_API.Models.ScrapeSubjects;
 using E_Dnevnik_API.Models.ScrapeTests;
-using E_Dnevnik_API.Models.SpecificSubject;
 using E_Dnevnik_API.ScrapingServices;
 using E_Dnevnik_API.V2.Sync;
 using RichardSzalay.MockHttp;
-using Grade = E_Dnevnik_API.Models.SpecificSubject.SpecificSubject;
 
 namespace E_Dnevnik_API.Tests.Unit;
 
@@ -92,7 +90,7 @@ public class V2SyncTests
     [Theory]
     [InlineData("5", (short)5)]
     [InlineData(" 1 ", (short)1)]
-    [InlineData("4 (vrlo dobar)", (short)4)]
+    [InlineData("4 (vrlo dobar)", null)]
     [InlineData("0", null)]
     [InlineData("6", null)]
     [InlineData("N/A", null)]
@@ -118,10 +116,7 @@ public class V2SyncTests
         Assert.Equal(expected, rows[0].SourceHash);
         Assert.Matches("^[0-9a-f]{64}$", rows[0].SourceHash);
         // poznata vrijednost sha256("abc")
-        Assert.Equal(
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
-            GradeRows.Hash("abc")
-        );
+        Assert.Equal("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", GradeRows.Hash("abc"));
     }
 
     [Fact]
@@ -142,128 +137,11 @@ public class V2SyncTests
     public void Hash_IsStableAcrossSyncs()
     {
         var g = new[] { new ParsedGrade(new DateOnly(2027, 1, 5), 3, "Pisano", null) };
-        Assert.Equal(
-            GradeRows.WithHashes(Child, 8, g)[0].SourceHash,
-            GradeRows.WithHashes(Child, 8, g)[0].SourceHash
-        );
+        Assert.Equal(GradeRows.WithHashes(Child, 8, g)[0].SourceHash, GradeRows.WithHashes(Child, 8, g)[0].SourceHash);
         Assert.NotEqual(
             GradeRows.WithHashes(Child, 8, g)[0].SourceHash,
             GradeRows.WithHashes(Child, 1, g)[0].SourceHash
         );
-    }
-
-    // --- grading element from the subject page ---
-
-    private static SubjectDetails Details(
-        List<(string Name, List<string> Cells)> elements,
-        params (string Date, string Note, string Grade)[] grades
-    ) =>
-        new()
-        {
-            EvaluationElements = elements
-                .Select(e => new EvaluationElement { Name = e.Name, GradesByMonth = e.Cells })
-                .ToList(),
-            MonthlyGrades = grades
-                .GroupBy(g => g.Date.Split('.')[1])
-                .Select(gr =>
-                {
-                    var m = new MonthlyGrades(gr.Key);
-                    m.Grades.AddRange(gr.Select(g => new Grade(g.Date, g.Note, g.Grade)));
-                    return m;
-                })
-                .ToList(),
-            FinalGrade = "N/A",
-        };
-
-    [Fact]
-    public void Parse_MatchesElementByMonthAndValue()
-    {
-        // stupci: IX, X, XI, XII, I...
-        var details = Details(
-            new()
-            {
-                ("Usvojenost znanja", new() { "", "4", "", "5", "" }),
-                ("Primjena znanja", new() { "", "3", "", "5", "" }),
-            },
-            ("10.10.", "Razlomci", "4"),
-            ("12.10.", "Zadaci", "3"),
-            ("03.12.", "", "5"),
-            ("10.12.", "", "5"),
-            ("15.01.", "Bez elementa", "2"),
-            ("20.01.", "", "+")
-        );
-
-        var parsed = GradeRows.Parse(details, new SchoolYear(2026));
-
-        Assert.Equal(5, parsed.Count); // "+" preskočen
-        Assert.Equal(("Usvojenost znanja", (short)4), (parsed[0].GradingElement, parsed[0].Value));
-        Assert.Equal("Primjena znanja", parsed[1].GradingElement);
-        Assert.Equal("Usvojenost znanja", parsed[2].GradingElement);
-        Assert.Equal("Primjena znanja", parsed[3].GradingElement);
-        // nema u tablici elemenata -> bilješka
-        Assert.Equal("Bez elementa", parsed[4].GradingElement);
-        Assert.Equal(new DateOnly(2027, 1, 15), parsed[4].GradedOn);
-        Assert.Null(parsed[2].Note);
-    }
-
-    [Fact]
-    public void Parse_NoElementNoNote_FallsBackToOcjena()
-    {
-        var details = Details(new(), ("10.10.", "", "4"));
-        Assert.Equal("ocjena", GradeRows.Parse(details, new SchoolYear(2026))[0].GradingElement);
-    }
-
-    [Fact]
-    public void ParseCellValues_SplitsDigits()
-    {
-        Assert.Equal(new short[] { 4, 5 }, GradeRows.ParseCellValues("4 5"));
-        Assert.Equal(new short[] { 4, 5 }, GradeRows.ParseCellValues("4,5"));
-        Assert.Equal(new short[] { 4, 5 }, GradeRows.ParseCellValues("45"));
-        Assert.Empty(GradeRows.ParseCellValues(""));
-    }
-
-    [Fact]
-    public async Task Parse_FromSubjectPageHtml()
-    {
-        // sintetička stranica u obliku koji SpecificSubjectScraperService očekuje (XPath-ovi iz parsera)
-        const string html = """
-            <html><body>
-            <div class="flex-table s  grades-table ">
-              <div class="row">
-                <div class="cell first">Usmena provjera znanja</div>
-                <div class="cell grade"></div><div class="cell grade"><span>4</span></div>
-                <div class="cell grade"></div><div class="cell grade"></div>
-              </div>
-              <div class="row">
-                <div class="cell first">Pisana provjera znanja</div>
-                <div class="cell grade"></div><div class="cell grade"><span>2</span></div>
-                <div class="cell grade"></div><div class="cell grade"></div>
-              </div>
-              <div class="row">
-                <div class="cell first">ZAKLJUČENO</div>
-              </div>
-            </div>
-            <div class="row  ">
-              <div class="cell" data-date="2026-10-10">10.10.</div>
-              <div class="box"><div><span>4</span></div><div><span>Derivacije</span></div></div>
-            </div>
-            <div class="row  ">
-              <div class="cell" data-date="2026-10-20">20.10.</div>
-              <div class="box"><div><span>2</span></div><div><span>Ispit</span></div></div>
-            </div>
-            </body></html>
-            """;
-        var mock = new MockHttpMessageHandler();
-        mock.When("https://ocjene.skole.hr/grade/42").Respond("text/html", html);
-        var details = await new SpecificSubjectScraperService().ScrapeSubjects(mock.ToHttpClient(), "42");
-
-        var parsed = GradeRows.Parse(details, new SchoolYear(2026));
-
-        Assert.Equal(2, parsed.Count);
-        Assert.Equal("Usmena provjera znanja", parsed[0].GradingElement);
-        Assert.Equal("Derivacije", parsed[0].Note);
-        Assert.Equal("Pisana provjera znanja", parsed[1].GradingElement);
-        Assert.Equal((short)2, parsed[1].Value);
     }
 
     // --- subject mapping ---
@@ -301,6 +179,35 @@ public class V2SyncTests
         Assert.Equal("priroda i drustvo", SubjectMapper.Normalize("Priroda i društvo"));
     }
 
+    [Theory]
+    [InlineData("Engleski jezik I", "engleski jezik")]
+    [InlineData("Matematika IV", "matematika")]
+    [InlineData("Njemački jezik VIII", "njemacki jezik")]
+    [InlineData("Fizika", "fizika")]
+    [InlineData("Hrvatski jezik i književnost", "hrvatski jezik i knjizevnost")]
+    public void SubjectMapper_Normalize_DropsTrailingRoman(string name, string expected)
+    {
+        Assert.Equal(expected, SubjectMapper.Normalize(name));
+    }
+
+    [Theory]
+    [InlineData("Engleski jezik I", (short)3)]
+    [InlineData("Matematika II", (short)1)]
+    public void SubjectMapper_MapsRomanNumeralNames(string name, short id)
+    {
+        Assert.Equal(id, new SubjectMapper(Seed).Map(name)?.Id);
+    }
+
+    [Theory]
+    [InlineData("Sat razrednika", true)]
+    [InlineData("  sat   razrednika ", true)]
+    [InlineData("Matematika", false)]
+    [InlineData("", false)]
+    public void SubjectMapper_IsHomeroom(string name, bool expected)
+    {
+        Assert.Equal(expected, SubjectMapper.IsHomeroom(name));
+    }
+
     // --- dead session ---
 
     private const string LoginForm = """
@@ -322,9 +229,7 @@ public class V2SyncTests
     [Fact]
     public void Detector_LoginFormIsDead()
     {
-        Assert.True(
-            EdnevnikSessionDetector.IsLoginPage(new Uri("https://ocjene.skole.hr/course"), LoginForm)
-        );
+        Assert.True(EdnevnikSessionDetector.IsLoginPage(new Uri("https://ocjene.skole.hr/course"), LoginForm));
     }
 
     [Fact]
@@ -366,9 +271,7 @@ public class V2SyncTests
         using var client = new HttpClient(
             new EdnevnikSessionHandler(TimeProvider.System, TimeSpan.Zero) { InnerHandler = new RedirectedToLogin() }
         );
-        await Assert.ThrowsAsync<EdnevnikSessionInvalidException>(() =>
-            new ScraperService().ScrapeSubjects(client)
-        );
+        await Assert.ThrowsAsync<EdnevnikSessionInvalidException>(() => new ScraperService().ScrapeSubjects(client));
     }
 
     [Fact]
@@ -449,8 +352,18 @@ public class V2SyncTests
         Assert.Null(SyncSummary.NextTest(tests, new DateOnly(2026, 12, 1)));
     }
 
+    private static string Page(params (string ActionId, string Date, string Value)[] grades) =>
+        "<html><body>"
+        + string.Concat(
+            grades.Select(g =>
+                $"<div class=\"row \" data-action-id=\"{g.ActionId}\"><div data-date=\"{g.Date}\" class=\"cell\"></div>"
+                + $"<div class=\"box\"><div class=\"cell\"><span>{g.Value}</span></div><div class=\"cell\"></div></div></div>"
+            )
+        )
+        + "</body></html>";
+
     [Fact]
-    public void Plan_BuildsRowsAndSummary()
+    public async Task Plan_BuildsRowsAndSummary()
     {
         var snapshot = new EdnevnikSnapshot(
             new StudentProfileInfo
@@ -463,49 +376,87 @@ public class V2SyncTests
             {
                 new(
                     new SubjectInfo("Matematika", "Marko Markovic", "2", "100"),
-                    Details(new(), ("10.10.", "", "2"), ("12.10.", "", "3"))
+                    Page(("1", "10.10.2026.", "2"), ("2", "12.10.2026.", "3"))
                 ),
-                new(
-                    new SubjectInfo("Glazbena kultura", "N/A", "5", "200"),
-                    Details(new(), ("10.10.", "", "5"))
-                ),
-                new(new SubjectInfo("Fizika", "Ivo Ivic", "5", "300"), Details(new(), ("01.10.", "", "5"))),
+                new(new SubjectInfo("Glazbena kultura", "N/A", "5", "200"), Page(("3", "10.10.2026.", "5"))),
+                new(new SubjectInfo("Sat razrednika", "Ana Anic", "", "250"), null),
+                new(new SubjectInfo("Fizika", "Ivo Ivic", "5", "300"), Page(("4", "1.10.2026.", "5"))),
+                new(new SubjectInfo("Engleski jezik I", "Eva Evic", "4", "400"), GradePageFixtures.Empty),
             },
             new List<TestInfo>
             {
                 new("Fizika", "Gibanje", "20.11."),
                 new("Matematika", "", "10.11."),
                 new("Matematika", "Stari", "01.10."),
+                new("Glazbena kultura", "Pjevanje", "25.11."),
             }
         );
 
-        var plan = SyncService.Plan(
+        var lookups = new List<string>();
+        var resolver = new SubjectResolver(
+            new SubjectMapper(Seed),
+            (name, _) =>
+            {
+                lookups.Add(name);
+                return Task.FromResult((short)40);
+            }
+        );
+
+        var plan = await SyncService.PlanAsync(
             Child,
             snapshot,
-            new SubjectMapper(Seed),
+            resolver,
             new SchoolYear(2026),
             new DateOnly(2026, 11, 7)
         );
 
-        Assert.Equal(new short[] { 1, 8 }, plan.ChildSubjects.Select(c => c.SubjectId));
+        // nepoznat predmet ide kroz bazu (jednom), sat razrednika se preskače
+        Assert.Equal(new[] { "Glazbena kultura" }, lookups);
+        Assert.Equal(new short[] { 1, 40, 8, 3 }, plan.ChildSubjects.Select(c => c.SubjectId));
         Assert.Equal("100", plan.ChildSubjects[0].EdnevnikRef);
         Assert.Equal("Marko Markovic", plan.ChildSubjects[0].TeacherName);
-        Assert.Equal(3, plan.Grades.Count);
-        Assert.Equal(3, plan.Tests.Count);
+        Assert.Equal(4, plan.Grades.Count);
+        Assert.Equal(
+            GradeRows.Hash($"{Child:D}|action:1|2"),
+            plan.Grades.Single(g => g.SubjectId == 1 && g.Value == 2).SourceHash
+        );
+        Assert.Equal(4, plan.Tests.Count);
         Assert.Equal("Gibanje", plan.Tests[0].Title);
         Assert.Equal((short)8, plan.Tests[0].SubjectId);
         Assert.Equal("Matematika", plan.Tests[1].Title);
+        Assert.Equal((short)40, plan.Tests[3].SubjectId);
 
         var r = plan.Response;
         Assert.Equal("OS Ivana Gundulica", r.School);
         Assert.Equal("6b", r.ClassName);
         Assert.Equal("Ana Anic", r.HomeroomTeacher);
-        Assert.Equal(3, r.SubjectCount);
+        Assert.Equal(4, r.SubjectCount);
         Assert.Equal("Matematika", r.WeakestSubject);
         Assert.Equal(2.5, r.WeakestAverage);
         Assert.Equal("Matematika", r.NextTestSubject);
         Assert.Equal("2026-11-10", r.NextTestOn);
-        Assert.Equal(new[] { "Glazbena kultura" }, r.UnmappedSubjects);
+        Assert.Empty(r.UnmappedSubjects);
+    }
+
+    [Fact]
+    public async Task Resolver_CachesLookupAndSkipsHomeroom()
+    {
+        var calls = 0;
+        var resolver = new SubjectResolver(
+            new SubjectMapper(Seed),
+            (_, _) =>
+            {
+                calls++;
+                return Task.FromResult((short)41);
+            }
+        );
+
+        Assert.Equal((short)41, (await resolver.ResolveAsync("Tjelesna i zdravstvena kultura", default))!.Id);
+        Assert.Equal((short)41, (await resolver.ResolveAsync(" Tjelesna i zdravstvena kultura ", default))!.Id);
+        Assert.Equal((short)3, (await resolver.ResolveAsync("Engleski jezik I", default))!.Id);
+        Assert.Null(await resolver.ResolveAsync("Sat razrednika", default));
+        Assert.Null(await resolver.ResolveAsync("SAT RAZREDNIKA", default));
+        Assert.Equal(1, calls);
     }
 
     [Fact]
@@ -524,7 +475,12 @@ public class V2SyncTests
     [Fact]
     public void BuildCookies_ScopedToOcjeneRoot()
     {
-        var jar = EdnevnikSyncScraper.BuildCookies(new[] { new SyncCookie { Name = "PHPSESSID", Value = "x" } });
+        var jar = EdnevnikSyncScraper.BuildCookies(
+            new[]
+            {
+                new SyncCookie { Name = "PHPSESSID", Value = "x" },
+            }
+        );
         var cookies = jar.GetCookies(new Uri("https://ocjene.skole.hr/course"));
         Assert.Single(cookies);
         Assert.Empty(jar.GetCookies(new Uri("https://example.com/")));

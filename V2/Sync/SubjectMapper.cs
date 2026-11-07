@@ -62,7 +62,14 @@ namespace E_Dnevnik_API.V2.Sync
             yield return Normalize(head);
         }
 
-        // mala slova, bez dijakritika i interpunkcije, jedan razmak
+        // "Sat razrednika" nema ocjena ni redak u child_subjects
+        public static bool IsHomeroom(string? ednevnikName) =>
+            !string.IsNullOrWhiteSpace(ednevnikName) && Normalize(ednevnikName) == "sat razrednika";
+
+        private static readonly Regex TrailingRoman = new(@"\s(i|ii|iii|iv|v|vi|vii|viii)$", RegexOptions.Compiled);
+
+        // mala slova, bez dijakritika i interpunkcije, jedan razmak, bez rimskog broja razreda
+        // na kraju ("Engleski jezik I" -> "engleski jezik")
         public static string Normalize(string text)
         {
             var sb = new StringBuilder(text.Length);
@@ -80,7 +87,45 @@ namespace E_Dnevnik_API.V2.Sync
                     }
                 );
             }
-            return Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+            var normalized = Regex.Replace(sb.ToString(), @"\s+", " ").Trim();
+            return TrailingRoman.Replace(normalized, "");
+        }
+    }
+
+    // jedan sync: statično mapiranje, a nepoznata imena preko baze (ednevnik_subject_id),
+    // s cacheom po imenu da isti predmet ne zovemo dvaput
+    public class SubjectResolver
+    {
+        private readonly SubjectMapper _mapper;
+        private readonly Func<string, CancellationToken, Task<short>> _lookup;
+        private readonly Dictionary<string, SubjectRow?> _cache = new();
+
+        public SubjectResolver(SubjectMapper mapper, Func<string, CancellationToken, Task<short>> lookup)
+        {
+            _mapper = mapper;
+            _lookup = lookup;
+        }
+
+        // samo statično mapiranje, bez baze
+        public SubjectRow? MapStatic(string? ednevnikName) => _mapper.Map(ednevnikName);
+
+        // null za prazno ime i za sat razrednika
+        public async Task<SubjectRow?> ResolveAsync(string? ednevnikName, CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(ednevnikName) || SubjectMapper.IsHomeroom(ednevnikName))
+                return null;
+            var name = ednevnikName.Trim();
+            if (_cache.TryGetValue(name, out var cached))
+                return cached;
+
+            var row = _mapper.Map(name);
+            if (row is null)
+            {
+                var id = await _lookup(name, ct);
+                row = new SubjectRow(id, "", name);
+            }
+            _cache[name] = row;
+            return row;
         }
     }
 }

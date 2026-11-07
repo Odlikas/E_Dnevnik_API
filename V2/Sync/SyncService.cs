@@ -14,7 +14,12 @@ namespace E_Dnevnik_API.V2.Sync
 
     public interface ISyncService
     {
-        Task<SyncOutcome> SyncAsync(Guid callerId, Guid childId, IReadOnlyList<SyncCookie> cookies, CancellationToken ct);
+        Task<SyncOutcome> SyncAsync(
+            Guid callerId,
+            Guid childId,
+            IReadOnlyList<SyncCookie> cookies,
+            CancellationToken ct
+        );
     }
 
     // /v2/sync: provjera pristupa -> scrape -> upis u jednoj transakciji -> sažetak
@@ -43,7 +48,8 @@ namespace E_Dnevnik_API.V2.Sync
 
         public static string? ServiceVersion { get; } =
             Environment.GetEnvironmentVariable("SERVICE_VERSION")
-            ?? Assembly.GetExecutingAssembly()
+            ?? Assembly
+                .GetExecutingAssembly()
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
                 ?.InformationalVersion;
 
@@ -94,7 +100,13 @@ namespace E_Dnevnik_API.V2.Sync
             }
             catch (EdnevnikSessionInvalidException)
             {
-                await _repo.FinishRunAsync(runId, "login_error", 0, SyncErrorCodes.SessionInvalid, CancellationToken.None);
+                await _repo.FinishRunAsync(
+                    runId,
+                    "login_error",
+                    0,
+                    SyncErrorCodes.SessionInvalid,
+                    CancellationToken.None
+                );
                 return new SyncOutcome(SyncOutcomeKind.SessionInvalid);
             }
             catch (EdnevnikUnavailableException)
@@ -105,7 +117,11 @@ namespace E_Dnevnik_API.V2.Sync
 
             try
             {
-                var plan = Plan(child.Id, snapshot, new SubjectMapper(await _repo.GetSubjectsAsync(ct)), year, today);
+                var resolver = new SubjectResolver(
+                    new SubjectMapper(await _repo.GetSubjectsAsync(ct)),
+                    _repo.EdnevnikSubjectIdAsync
+                );
+                var plan = await PlanAsync(child.Id, snapshot, resolver, year, today, ct);
                 var newGrades = await _repo.WriteAsync(
                     new SyncWrite(runId, child.Id, child.FamilyId, year, plan.ChildSubjects, plan.Grades, plan.Tests),
                     ct
@@ -129,12 +145,13 @@ namespace E_Dnevnik_API.V2.Sync
         );
 
         // čisti dio: od skinutih stranica do redaka za bazu i sažetka (NewGrades puni pozivatelj)
-        public static SyncPlan Plan(
+        public static async Task<SyncPlan> PlanAsync(
             Guid childId,
             EdnevnikSnapshot snapshot,
-            SubjectMapper mapper,
+            SubjectResolver resolver,
             SchoolYear year,
-            DateOnly today
+            DateOnly today,
+            CancellationToken ct = default
         )
         {
             var childSubjects = new List<ChildSubjectRow>();
@@ -142,16 +159,23 @@ namespace E_Dnevnik_API.V2.Sync
             var unmapped = new List<string>();
             var averages = new List<(string, IReadOnlyCollection<short>)>();
             var seenSubjects = new HashSet<short>();
+            var idByName = new Dictionary<string, short>();
+            var subjectCount = 0;
 
             foreach (var s in snapshot.Subjects)
             {
-                var subject = mapper.Map(s.Info.SubjectName);
+                // sat razrednika: nema ocjena, ne broji se i ne ide u child_subjects
+                if (SubjectMapper.IsHomeroom(s.Info.SubjectName))
+                    continue;
+                subjectCount++;
+                var subject = await resolver.ResolveAsync(s.Info.SubjectName, ct);
                 if (subject is null)
                 {
-                    if (!unmapped.Contains(s.Info.SubjectName))
+                    if (!string.IsNullOrWhiteSpace(s.Info.SubjectName) && !unmapped.Contains(s.Info.SubjectName))
                         unmapped.Add(s.Info.SubjectName);
                     continue;
                 }
+                idByName.TryAdd(SubjectMapper.Normalize(s.Info.SubjectName), subject.Id);
                 // dva e-Dnevnik predmeta na isti subject: vrijedi prvi
                 if (!seenSubjects.Add(subject.Id))
                     continue;
@@ -159,7 +183,7 @@ namespace E_Dnevnik_API.V2.Sync
                 childSubjects.Add(
                     new ChildSubjectRow(subject.Id, s.Info.SubjectId, SyncSummary.OrNull(s.Info.Professor))
                 );
-                var parsed = GradeRows.Parse(s.Details, year);
+                var parsed = GradePageParser.Parse(s.GradeHtml, year);
                 grades.AddRange(GradeRows.WithHashes(childId, subject.Id, parsed));
                 averages.Add((subject.NameHr, parsed.Select(g => g.Value).ToList()));
             }
@@ -175,7 +199,11 @@ namespace E_Dnevnik_API.V2.Sync
                 var title = string.IsNullOrEmpty(description) ? subjectName : description;
                 if (string.IsNullOrEmpty(title))
                     continue;
-                tests.Add(new ParsedTest(subjectName, mapper.Map(subjectName)?.Id, title, date.Value));
+                // samo predmeti s popisa ovog synca; ispit ne stvara novi predmet
+                short? subjectId = idByName.TryGetValue(SubjectMapper.Normalize(subjectName), out var sid)
+                    ? sid
+                    : resolver.MapStatic(subjectName)?.Id;
+                tests.Add(new ParsedTest(subjectName, subjectId, title, date.Value));
             }
 
             var (weakest, weakestAvg) = SyncSummary.Weakest(averages);
@@ -187,7 +215,7 @@ namespace E_Dnevnik_API.V2.Sync
                 School = SyncSummary.OrNull(profile?.StudentSchool),
                 ClassName = SyncSummary.OrNull(profile?.StudentGrade),
                 HomeroomTeacher = SyncSummary.OrNull(profile?.ClassMaster),
-                SubjectCount = snapshot.Subjects.Count,
+                SubjectCount = subjectCount,
                 WeakestSubject = weakest,
                 WeakestAverage = weakestAvg,
                 NextTestSubject = next is null ? null : SyncSummary.OrNull(next.SubjectName),
