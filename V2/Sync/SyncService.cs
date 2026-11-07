@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace E_Dnevnik_API.V2.Sync
 {
@@ -223,7 +223,7 @@ namespace E_Dnevnik_API.V2.Sync
             var response = new SyncResponse
             {
                 School = SyncSummary.OrNull(profile?.StudentSchool),
-                ClassName = SyncSummary.FormatClass(profile?.StudentGrade),
+                ClassName = SyncSummary.FormatClass(profile?.StudentClassRaw ?? profile?.StudentGrade),
                 HomeroomTeacher = SyncSummary.OrNull(profile?.ClassMaster),
                 SubjectCount = subjectCount,
                 WeakestSubject = weakest,
