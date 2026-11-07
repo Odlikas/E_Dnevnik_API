@@ -2,7 +2,7 @@
 
 Backend REST API for the **Odlikaš** mobile app — a companion for the Croatian national e-grade system [E-Dnevnik](https://ocjene.skole.hr). The API authenticates students, scrapes their grade data, detects new grades in real time and delivers push notifications via Firebase Cloud Messaging.
 
-**Live:** `https://e-dnevnik-api.fly.dev`
+**Live:** `https://api.odlikas.hr`
 
 ---
 
@@ -35,8 +35,8 @@ Backend REST API for the **Odlikaš** mobile app — a companion for the Croatia
 | Push notifications | Firebase Admin SDK (FCM) |
 | Payments | Stripe.net v51 |
 | Realtime DB | Google.Cloud.Firestore |
-| Deployment | Docker → Fly.io |
-| DB hosting | Neon (serverless Postgres) |
+| Deployment | Oracle Cloud VM (ARM64), systemd + Caddy, deployed by GitHub Actions |
+| DB hosting | PostgreSQL 16 on the same VM |
 
 ---
 
@@ -185,14 +185,11 @@ Full API documentation: [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md)
 
 ## Deployment
 
-The app is deployed on [Fly.io](https://fly.io) using the included `Dockerfile`. Database is hosted on [Neon](https://neon.tech).
+The API runs on an Oracle Cloud VM (ARM64, Frankfurt) as the systemd service `ednevnik`, behind Caddy (automatic HTTPS) at `https://api.odlikas.hr`. Its PostgreSQL database runs on the same VM and is backed up nightly. Server setup, deploys and restore steps: `ops/oracle/README.md` in `Odlikas/Odlikas_Mobilna_v2`.
 
 EF Core migrations run automatically on startup — no manual migration step needed.
 
-To redeploy manually:
-```bash
-fly deploy -a e-dnevnik-api
-```
+Every push to `main` deploys automatically (see CI/CD).
 
 ---
 
@@ -219,7 +216,7 @@ dotnet test
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request:
 
 1. `dotnet restore` → `dotnet build` → `dotnet test`
-2. On merge to `main`: auto-deploys to Fly.io via `flyctl deploy`
+2. On merge to `main`: builds `linux-arm64`, uploads to the Oracle VM over SSH and switches to the new release; if `/health` fails it rolls back to the previous one
 
 ## Security
 
@@ -264,7 +261,7 @@ feat: add leaderboard opt-in endpoint
 fix: handle missing CSRF token on login page
 refactor: extract score calculation into helper
 docs: update environment variable table
-ci: switch to flyctl for deploy step
+ci: cache NuGet packages in the test job
 test: add CacheService TTL tests
 chore: remove committed zip archives
 ```
