@@ -33,6 +33,16 @@ namespace E_Dnevnik_API.V2.Sync
         public static ParsedTest? NextTest(IEnumerable<ParsedTest> tests, DateOnly today) =>
             tests.Where(t => t.Date >= today).OrderBy(t => t.Date).FirstOrDefault();
 
+        // profil skida točku iz razreda ("4b", "4E4"): vraćamo je iza broja razreda ("4.b", "4.E4")
+        public static string? FormatClass(string? text)
+        {
+            var t = OrNull(text)?.Trim();
+            if (t is null)
+                return null;
+            var m = System.Text.RegularExpressions.Regex.Match(t, @"^(\d)\s*\.?\s*(\S.*)$");
+            return m.Success ? $"{m.Groups[1].Value}.{m.Groups[2].Value}" : t;
+        }
+
         // "N/A" i prazno iz scrapera -> null
         public static string? OrNull(string? text) =>
             string.IsNullOrWhiteSpace(text) || text.Trim() == "N/A" ? null : text.Trim();

@@ -123,7 +123,17 @@ namespace E_Dnevnik_API.V2.Sync
                 );
                 var plan = await PlanAsync(child.Id, snapshot, resolver, year, today, ct);
                 var newGrades = await _repo.WriteAsync(
-                    new SyncWrite(runId, child.Id, child.FamilyId, year, plan.ChildSubjects, plan.Grades, plan.Tests),
+                    new SyncWrite(
+                        runId,
+                        child.Id,
+                        child.FamilyId,
+                        year,
+                        plan.ChildSubjects,
+                        plan.Grades,
+                        plan.Tests,
+                        plan.Response.School,
+                        plan.Response.ClassName
+                    ),
                     ct
                 );
                 plan.Response.NewGrades = newGrades;
@@ -213,7 +223,7 @@ namespace E_Dnevnik_API.V2.Sync
             var response = new SyncResponse
             {
                 School = SyncSummary.OrNull(profile?.StudentSchool),
-                ClassName = SyncSummary.OrNull(profile?.StudentGrade),
+                ClassName = SyncSummary.FormatClass(profile?.StudentGrade),
                 HomeroomTeacher = SyncSummary.OrNull(profile?.ClassMaster),
                 SubjectCount = subjectCount,
                 WeakestSubject = weakest,

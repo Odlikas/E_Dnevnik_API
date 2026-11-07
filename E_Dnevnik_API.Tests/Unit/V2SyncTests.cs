@@ -428,7 +428,7 @@ public class V2SyncTests
 
         var r = plan.Response;
         Assert.Equal("OS Ivana Gundulica", r.School);
-        Assert.Equal("6b", r.ClassName);
+        Assert.Equal("6.b", r.ClassName);
         Assert.Equal("Ana Anic", r.HomeroomTeacher);
         Assert.Equal(4, r.SubjectCount);
         Assert.Equal("Matematika", r.WeakestSubject);
