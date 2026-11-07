@@ -6,6 +6,9 @@
         public string? StudentSchoolCity { get; set; }
         public string? StudentSchoolYear { get; set; }
         public string? StudentGrade { get; set; }
+
+        // razred točno kako ga e-Dnevnik piše ("4.E-4"); StudentGrade je očišćen ("4E4")
+        public string? StudentClassRaw { get; set; }
         public string? StudentName { get; set; }
         public string? ClassMaster { get; set; }
         public string? StudentProgram { get; set; }

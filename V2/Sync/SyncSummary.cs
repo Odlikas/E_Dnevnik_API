@@ -33,7 +33,7 @@ namespace E_Dnevnik_API.V2.Sync
         public static ParsedTest? NextTest(IEnumerable<ParsedTest> tests, DateOnly today) =>
             tests.Where(t => t.Date >= today).OrderBy(t => t.Date).FirstOrDefault();
 
-        // profil skida točku iz razreda ("4b", "4E4"): vraćamo je iza broja razreda ("4.b", "4.E4")
+        // razred kako ga e-Dnevnik piše ("4.E-4") ostaje; očišćenom ("4b") vraćamo točku iza broja ("4.b")
         public static string? FormatClass(string? text)
         {
             var t = OrNull(text)?.Trim();

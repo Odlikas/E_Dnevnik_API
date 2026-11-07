@@ -8,6 +8,7 @@ public class FormatClassTests
     [InlineData("4b", "4.b")]
     [InlineData("4E4", "4.E4")]
     [InlineData("5.b", "5.b")]
+    [InlineData("4.E-4", "4.E-4")]
     [InlineData("1 a", "1.a")]
     [InlineData("N/A", null)]
     [InlineData("", null)]

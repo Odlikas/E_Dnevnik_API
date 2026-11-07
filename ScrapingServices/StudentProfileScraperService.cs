@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using E_Dnevnik_API.Models.ScrapeStudentProfile;
 using HtmlAgilityPack;
 
@@ -36,6 +36,10 @@ namespace E_Dnevnik_API.ScrapingServices
             );
             var studentGrade =
                 studentGradeNode != null ? CleanText(studentGradeNode.InnerText) : "N/A";
+            var studentClassRaw =
+                studentGradeNode != null
+                    ? Regex.Replace(HtmlEntity.DeEntitize(studentGradeNode.InnerText), "\\s+", " ").Trim()
+                    : null;
 
             var studentSchoolYearNode = htmlDoc.DocumentNode.SelectSingleNode(
                 "//div[@id='page-wrapper']//div[@class='school-data']//div[@class='class']//span[@class='class-schoolyear']"
@@ -72,6 +76,7 @@ namespace E_Dnevnik_API.ScrapingServices
             {
                 StudentName = studentName,
                 StudentGrade = studentGrade,
+                StudentClassRaw = studentClassRaw,
                 StudentSchoolYear = studentSchoolYear,
                 StudentSchool = studentSchool,
                 StudentSchoolCity = studentSchoolCity,
