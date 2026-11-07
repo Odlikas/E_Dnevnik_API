@@ -114,13 +114,15 @@ if (serviceAccountJson != null)
 }
 
 // --- Stripe ---
+// isključeno dok ne trebamo plaćanja; vrati ovaj blok i postavi STRIPE_SECRET_KEY kad se Stripe opet uvodi.
+// PaymentController dohvaća StripeClient preko GetService, pa bez njega samo plaćanja ne rade.
 // env var takes priority; fall back to appsettings.Development.json for local dev
-var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
-    ?? builder.Configuration["Stripe:SecretKey"];
-if (stripeKey is null && !builder.Environment.IsDevelopment())
-    throw new InvalidOperationException("STRIPE_SECRET_KEY environment variable is not set.");
-if (stripeKey is not null)
-    builder.Services.AddSingleton(new StripeClient(stripeKey));
+// var stripeKey = Environment.GetEnvironmentVariable("STRIPE_SECRET_KEY")
+//     ?? builder.Configuration["Stripe:SecretKey"];
+// if (stripeKey is null && !builder.Environment.IsDevelopment())
+//     throw new InvalidOperationException("STRIPE_SECRET_KEY environment variable is not set.");
+// if (stripeKey is not null)
+//     builder.Services.AddSingleton(new StripeClient(stripeKey));
 
 // --- Firestore ---
 if (serviceAccountJson != null)
