@@ -17,7 +17,9 @@ namespace E_Dnevnik_API.V2.Sync
         SchoolYear Year,
         List<ChildSubjectRow> ChildSubjects,
         List<GradeRow> Grades,
-        List<CalendarTestRow> Tests
+        List<CalendarTestRow> Tests,
+        string? School = null,
+        string? ClassName = null
     );
 
     public interface ISyncRepository
@@ -117,6 +119,26 @@ namespace E_Dnevnik_API.V2.Sync
         {
             await using var conn = await Db.OpenConnectionAsync(ct);
             await using var tx = await conn.BeginTransactionAsync(ct);
+
+            // škola i razred iz e-Dnevnik profila (servis ne smije mijenjati children izravno)
+            if (w.School != null || w.ClassName != null)
+            {
+                await using var cmd = new NpgsqlCommand("select public.ednevnik_set_child_school($1, $2, $3)", conn, tx);
+                cmd.Parameters.Add(new NpgsqlParameter { Value = w.ChildId });
+                cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)w.School ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+                cmd.Parameters.Add(new NpgsqlParameter { Value = (object?)w.ClassName ?? DBNull.Value, NpgsqlDbType = NpgsqlTypes.NpgsqlDbType.Text });
+                await cmd.ExecuteNonQueryAsync(ct);
+            }
+
+            // prvi sync djeteta: bez obavijesti za svaku ocjenu koja već postoji (trigger to čita)
+            await using (var first = new NpgsqlCommand(
+                "select set_config('odlikas.first_sync', "
+                    + "case when exists (select 1 from public.grades where child_id = $1) then '' else 'on' end, true)",
+                conn, tx))
+            {
+                first.Parameters.Add(new NpgsqlParameter { Value = w.ChildId });
+                await first.ExecuteNonQueryAsync(ct);
+            }
 
             // child_subjects: followed se nikad ne dira
             foreach (var cs in w.ChildSubjects)
