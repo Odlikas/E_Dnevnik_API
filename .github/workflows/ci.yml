@@ -22,15 +22,48 @@ jobs:
 
       - run: dotnet test --no-build --verbosity normal
 
+  # Deploys main to the Oracle VM (api.odlikas.hr). The deploy user can only upload to
+  # /opt/ednevnik/incoming and run `sudo ednevnik-activate <sha>`, which switches the release,
+  # checks /health and rolls back if it fails (Odlikas_Mobilna_v2: docs/BACKEND_PLAN.md §9, ops/oracle).
   deploy:
     needs: test
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    concurrency:
+      group: deploy-oracle
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
-      - uses: superfly/flyctl-actions/setup-flyctl@master
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
 
-      - run: flyctl deploy -a e-dnevnik-api --remote-only
+      - name: Build for the VM (linux-arm64)
+        run: |
+          dotnet publish E_Dnevnik_API.csproj -c Release -r linux-arm64 --self-contained false -o out
+          rm -f out/appsettings.Development.json
+
+      - name: SSH setup
         env:
-          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Upload
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes" \
+            out/ "deploy@$HOST:/opt/ednevnik/incoming/${GITHUB_SHA::7}/"
+
+      - name: Switch over (rolls back on a failed health check)
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+        run: ssh -i ~/.ssh/deploy -o IdentitiesOnly=yes "deploy@$HOST" "sudo /usr/local/bin/ednevnik-activate ${GITHUB_SHA::7}"
+
+      - name: Public health check
+        run: curl -fsS --retry 5 --retry-delay 3 https://api.odlikas.hr/health
