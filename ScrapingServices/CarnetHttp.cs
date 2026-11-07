@@ -27,7 +27,8 @@ namespace E_Dnevnik_API.ScrapingServices
             CarnetRequestSource source,
             string? userKey,
             TimeSpan? timeout = null,
-            CarnetRequestStats? stats = null
+            CarnetRequestStats? stats = null,
+            DelegatingHandler? outerHandler = null
         )
         {
             var handler = new HttpClientHandler { UseCookies = true, CookieContainer = cookies };
@@ -40,7 +41,15 @@ namespace E_Dnevnik_API.ScrapingServices
                 InnerHandler = handler,
             };
 
-            var client = new HttpClient(counting) { Timeout = timeout ?? DefaultTimeout };
+            // outerHandler (npr. /v2/sync razmak + provjera sesije) vidi konačni odgovor nakon redirecta
+            HttpMessageHandler top = counting;
+            if (outerHandler != null)
+            {
+                outerHandler.InnerHandler = counting;
+                top = outerHandler;
+            }
+
+            var client = new HttpClient(top) { Timeout = timeout ?? DefaultTimeout };
             client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
             return client;
         }

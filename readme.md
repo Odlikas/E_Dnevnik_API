@@ -183,6 +183,27 @@ Full API documentation: [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md)
 
 ---
 
+## /v2/sync
+
+`POST /v2/sync` is the v2 app's sync. The phone logs in to e-Dnevnik itself and sends only the session cookies; the service scrapes with them and writes subjects, grades and tests into the self-hosted Supabase Postgres as role `ednevnik_service`. Code: `V2/Sync/`, `Controllers/V2SyncController.cs`.
+
+- Header `Authorization: Bearer <Supabase access token>` (checked with `GET {Supabase:Url}/auth/v1/user`).
+- Body `{"childId": "<uuid>", "cookies": [{"name": "...", "value": "..."}]}` (cookies for `ocjene.skole.hr`, path `/`).
+- 200: `school`, `className`, `homeroomTeacher`, `subjectCount`, `weakestSubject`, `weakestAverage`, `nextTestSubject`, `nextTestOn` (`yyyy-MM-dd`), `newGrades`, `unmappedSubjects`.
+- Errors `{"error": "<code>"}`: 401 `unauthorized`, 403 `forbidden`, 400 `bad_request`, 422 `ednevnik_session_invalid`, 502 `ednevnik_unavailable`, 503 `not_configured` / `auth_unavailable`.
+- Good citizen: about 500 ms between requests, at most 2 syncs at once, 30 s timeout per page. Cookies are never logged or stored.
+
+| Config key | Env var | Example |
+|---|---|---|
+| `ConnectionStrings:Supabase` | `ConnectionStrings__Supabase` | `Host=127.0.0.1;Port=5432;Database=postgres;Username=ednevnik_service;Password=...` |
+| `Supabase:Url` | `Supabase__Url` | `http://127.0.0.1:8000` |
+| `Supabase:ApiKey` | `Supabase__ApiKey` | the publishable key |
+| (optional) | `SERVICE_VERSION` | written to `sync_runs.service_version`; defaults to the assembly version |
+
+Without them the app still starts and the old `/api/*` endpoints keep working; `/v2/sync` returns 503.
+
+---
+
 ## Deployment
 
 The API runs on an Oracle Cloud VM (ARM64, Frankfurt) as the systemd service `ednevnik`, behind Caddy (automatic HTTPS) at `https://api.odlikas.hr`. Its PostgreSQL database runs on the same VM and is backed up nightly. Server setup, deploys and restore steps: `ops/oracle/README.md` in `Odlikas/Odlikas_Mobilna_v2`.

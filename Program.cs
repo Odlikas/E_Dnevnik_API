@@ -172,6 +172,21 @@ builder.Services.AddScoped<E_Dnevnik_API.Services.TaskGenerationService>();
 
 builder.Services.AddScoped<E_Dnevnik_API.Services.GradeChangeDetectionService>();
 
+// --- v2: POST /v2/sync (kolačić s mobitela -> self-hosted Supabase) ---
+// bez ConnectionStrings:Supabase app se i dalje diže, a /v2/sync vraća 503
+var supabaseConnection = builder.Configuration.GetConnectionString("Supabase");
+if (!string.IsNullOrWhiteSpace(supabaseConnection))
+    builder.Services.AddSingleton(_ => Npgsql.NpgsqlDataSource.Create(supabaseConnection));
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddHttpClient(
+    E_Dnevnik_API.V2.Sync.SupabaseAuthClient.HttpClientName,
+    c => c.Timeout = TimeSpan.FromSeconds(10)
+);
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Sync.ISupabaseAuthClient, E_Dnevnik_API.V2.Sync.SupabaseAuthClient>();
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Sync.ISyncRepository, E_Dnevnik_API.V2.Sync.SyncRepository>();
+builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.IEdnevnikSyncScraper, E_Dnevnik_API.V2.Sync.EdnevnikSyncScraper>();
+builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.ISyncService, E_Dnevnik_API.V2.Sync.SyncService>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
