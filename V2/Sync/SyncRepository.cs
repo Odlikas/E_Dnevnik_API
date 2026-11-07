@@ -26,6 +26,9 @@ namespace E_Dnevnik_API.V2.Sync
         Task<ChildRecord?> GetChildAsync(Guid childId, CancellationToken ct);
         Task<bool> IsParentInFamilyAsync(Guid userId, Guid familyId, CancellationToken ct);
         Task<List<SubjectRow>> GetSubjectsAsync(CancellationToken ct);
+
+        // public.ednevnik_subject_id: subjects.id za ime iz e-Dnevnika, stvara predmet ako ga nema
+        Task<short> EdnevnikSubjectIdAsync(string ednevnikName, CancellationToken ct);
         Task<Guid> StartRunAsync(Guid childId, Guid familyId, Guid actorId, string? version, CancellationToken ct);
 
         // upisuje podatke i završava sync_runs kao 'ok'; vraća broj stvarno upisanih ocjena
@@ -62,19 +65,12 @@ namespace E_Dnevnik_API.V2.Sync
             await using var r = await cmd.ExecuteReaderAsync(ct);
             if (!await r.ReadAsync(ct))
                 return null;
-            return new ChildRecord(
-                r.GetGuid(0),
-                r.GetGuid(1),
-                r.IsDBNull(2) ? null : r.GetGuid(2),
-                r.GetBoolean(3)
-            );
+            return new ChildRecord(r.GetGuid(0), r.GetGuid(1), r.IsDBNull(2) ? null : r.GetGuid(2), r.GetBoolean(3));
         }
 
         public async Task<bool> IsParentInFamilyAsync(Guid userId, Guid familyId, CancellationToken ct)
         {
-            await using var cmd = Db.CreateCommand(
-                "select 1 from public.parents where id = $1 and family_id = $2"
-            );
+            await using var cmd = Db.CreateCommand("select 1 from public.parents where id = $1 and family_id = $2");
             cmd.Parameters.Add(new NpgsqlParameter { Value = userId });
             cmd.Parameters.Add(new NpgsqlParameter { Value = familyId });
             return await cmd.ExecuteScalarAsync(ct) != null;
@@ -88,6 +84,14 @@ namespace E_Dnevnik_API.V2.Sync
             while (await r.ReadAsync(ct))
                 list.Add(new SubjectRow(r.GetInt16(0), r.GetString(1), r.GetString(2)));
             return list;
+        }
+
+        public async Task<short> EdnevnikSubjectIdAsync(string ednevnikName, CancellationToken ct)
+        {
+            await using var cmd = Db.CreateCommand("select public.ednevnik_subject_id($1)");
+            cmd.Parameters.Add(new NpgsqlParameter { Value = ednevnikName });
+            var result = await cmd.ExecuteScalarAsync(ct);
+            return Convert.ToInt16(result);
         }
 
         public async Task<Guid> StartRunAsync(

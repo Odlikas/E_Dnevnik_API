@@ -2,36 +2,27 @@ using System.Net;
 using E_Dnevnik_API.Models.ScrapeStudentProfile;
 using E_Dnevnik_API.Models.ScrapeSubjects;
 using E_Dnevnik_API.Models.ScrapeTests;
-using E_Dnevnik_API.Models.SpecificSubject;
 using E_Dnevnik_API.ScrapingServices;
 
 namespace E_Dnevnik_API.V2.Sync
 {
-    public record ScrapedSubject(SubjectInfo Info, SubjectDetails Details);
+    // GradeHtml: sirova stranica /grade/{id}, parsira je GradePageParser
+    public record ScrapedSubject(SubjectInfo Info, string? GradeHtml);
 
-    public record EdnevnikSnapshot(
-        StudentProfileInfo? Profile,
-        List<ScrapedSubject> Subjects,
-        List<TestInfo> Tests
-    );
+    public record EdnevnikSnapshot(StudentProfileInfo? Profile, List<ScrapedSubject> Subjects, List<TestInfo> Tests);
 
     public interface IEdnevnikSyncScraper
     {
         // baca EdnevnikSessionInvalidException ili EdnevnikUnavailableException
-        Task<EdnevnikSnapshot> ScrapeAsync(
-            IReadOnlyList<SyncCookie> cookies,
-            string userKey,
-            CancellationToken ct
-        );
+        Task<EdnevnikSnapshot> ScrapeAsync(IReadOnlyList<SyncCookie> cookies, string userKey, CancellationToken ct);
     }
 
-    // vrti postojeće scrapere s kolačićima s mobitela
+    // vrti postojeće scrapere s kolačićima s mobitela; stranice ocjena skida sam (sirovi HTML)
     public class EdnevnikSyncScraper : IEdnevnikSyncScraper
     {
         private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(30);
 
         private readonly ScraperService _subjects;
-        private readonly SpecificSubjectScraperService _subject;
         private readonly StudentProfileScraperService _profile;
         private readonly TestScraperService _tests;
         private readonly TimeProvider _time;
@@ -39,7 +30,6 @@ namespace E_Dnevnik_API.V2.Sync
 
         public EdnevnikSyncScraper(
             ScraperService subjects,
-            SpecificSubjectScraperService subject,
             StudentProfileScraperService profile,
             TestScraperService tests,
             TimeProvider time,
@@ -47,7 +37,6 @@ namespace E_Dnevnik_API.V2.Sync
         )
         {
             _subjects = subjects;
-            _subject = subject;
             _profile = profile;
             _tests = tests;
             _time = time;
@@ -60,6 +49,22 @@ namespace E_Dnevnik_API.V2.Sync
             foreach (var c in cookies)
                 container.Add(new Cookie(c.Name!, c.Value ?? "", "/", "ocjene.skole.hr"));
             return container;
+        }
+
+        // sirovi HTML /grade/{id}; isti client, pa razmak i provjera mrtve sesije vrijede i tu
+        public static async Task<string> FetchGradePageAsync(HttpClient client, string subjectId, CancellationToken ct)
+        {
+            using var response = await client.GetAsync(
+                $"https://ocjene.skole.hr/grade/{Uri.EscapeDataString(subjectId)}",
+                ct
+            );
+            if (!response.IsSuccessStatusCode)
+                throw new HttpRequestException(
+                    $"grade page returned {(int)response.StatusCode}",
+                    null,
+                    response.StatusCode
+                );
+            return await response.Content.ReadAsStringAsync(ct);
         }
 
         public async Task<EdnevnikSnapshot> ScrapeAsync(
@@ -88,8 +93,13 @@ namespace E_Dnevnik_API.V2.Sync
                     ct.ThrowIfCancellationRequested();
                     if (string.IsNullOrEmpty(info.SubjectId))
                         continue;
-                    var details = await _subject.ScrapeSubjects(client, info.SubjectId);
-                    subjects.Add(new ScrapedSubject(info, details));
+                    // sat razrednika nema ocjena, ne trošimo zahtjev
+                    if (SubjectMapper.IsHomeroom(info.SubjectName))
+                    {
+                        subjects.Add(new ScrapedSubject(info, null));
+                        continue;
+                    }
+                    subjects.Add(new ScrapedSubject(info, await FetchGradePageAsync(client, info.SubjectId, ct)));
                 }
 
                 List<TestInfo> tests;
