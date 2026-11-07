@@ -176,7 +176,10 @@ builder.Services.AddScoped<E_Dnevnik_API.Services.GradeChangeDetectionService>()
 // bez ConnectionStrings:Supabase app se i dalje diže, a /v2/sync vraća 503
 var supabaseConnection = builder.Configuration.GetConnectionString("Supabase");
 if (!string.IsNullOrWhiteSpace(supabaseConnection))
-    builder.Services.AddSingleton(_ => Npgsql.NpgsqlDataSource.Create(supabaseConnection));
+    // omotano u SupabaseDb: EF Core (UseNpgsql) bi inače uzeo NpgsqlDataSource iz DI-ja za staru bazu
+    builder.Services.AddSingleton(_ => new E_Dnevnik_API.V2.Sync.SupabaseDb(
+        Npgsql.NpgsqlDataSource.Create(supabaseConnection)
+    ));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHttpClient(
     E_Dnevnik_API.V2.Sync.SupabaseAuthClient.HttpClientName,
