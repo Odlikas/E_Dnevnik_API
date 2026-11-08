@@ -14,11 +14,18 @@ namespace E_Dnevnik_API.V2.Push
         // devices_blocking_off_notify, D265 u aplikaciji); jedan red po roditelju, samo roditeljima
         public const string Tamper = "tamper";
 
+        // roditelj je djetetu dodao vrijeme ili odobrio zahtjev (unlock_grants, trigger
+        // unlock_grants_time_added_notify, D269 u aplikaciji); minute su u payload 'value'; samo djetetu
+        public const string TimeAdded = "time_added";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
-        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest, Tamper };
+        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest, Tamper, TimeAdded };
 
         // tipovi koje dobiva i dijete na svom mobitelu (uz roditelje)
-        private static readonly HashSet<string> KidTypes = new() { NewGrade };
+        private static readonly HashSet<string> KidTypes = new() { NewGrade, TimeAdded };
+
+        // tipovi koje dobiva samo dijete (roditelji ih ne dobivaju)
+        private static readonly HashSet<string> KidOnlyTypes = new() { TimeAdded };
 
         private const string OpenApp = "Otvori Odlikaš i pogledaj.";
 
@@ -77,6 +84,8 @@ namespace E_Dnevnik_API.V2.Push
             {
                 if (r.Kind == RecipientKind.Parent)
                 {
+                    if (KidOnlyTypes.Contains(row.Type))
+                        continue;
                     if (r.FamilyId == row.FamilyId && (row.ParentId == null || row.ParentId == r.Id))
                         yield return r;
                 }
@@ -95,6 +104,13 @@ namespace E_Dnevnik_API.V2.Push
                 // D213: bez imena dok details nije uključen
                 var child = details ? rows[0].ChildFirstName?.Trim() : null;
                 return (string.IsNullOrEmpty(child) ? "Dijete treba pomoć" : child + " treba pomoć", OpenApp);
+            }
+            if (rows[0].Type == TimeAdded)
+            {
+                // D3: rodno neutralno; bez imena (ide samo djetetu)
+                var minutes = rows.Sum(r => r.Value ?? 0);
+                return (minutes > 0 ? $"Dodano ti je {minutes} min" : "Dodano ti je vrijeme",
+                    "Imaš više slobodnog vremena danas. Otvori Odlikaš.");
             }
             if (rows[0].Type == Tamper)
             {
