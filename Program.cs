@@ -189,6 +189,10 @@ builder.Services.AddSingleton<E_Dnevnik_API.V2.Sync.ISupabaseAuthClient, E_Dnevn
 builder.Services.AddSingleton<E_Dnevnik_API.V2.Sync.ISyncRepository, E_Dnevnik_API.V2.Sync.SyncRepository>();
 builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.IEdnevnikSyncScraper, E_Dnevnik_API.V2.Sync.EdnevnikSyncScraper>();
 builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.ISyncService, E_Dnevnik_API.V2.Sync.SyncService>();
+// --- v2: POST /v2/identity (srednjoškolac; sol za hash u Identity:Salt / env Identity__Salt) ---
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Identity.IIdentityRepository, E_Dnevnik_API.V2.Identity.IdentityRepository>();
+builder.Services.AddScoped<E_Dnevnik_API.V2.Identity.IEdnevnikIdentityScraper, E_Dnevnik_API.V2.Identity.EdnevnikIdentityScraper>();
+builder.Services.AddScoped<E_Dnevnik_API.V2.Identity.IIdentityService, E_Dnevnik_API.V2.Identity.IdentityService>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
