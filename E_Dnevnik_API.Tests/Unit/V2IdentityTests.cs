@@ -137,6 +137,7 @@ public class V2IdentityTests
     [Theory]
     [InlineData("3. 7. 2009.", 2009, 7, 3)]
     [InlineData("31.12.2010", 2010, 12, 31)]
+    [InlineData("14-03-2011", 2011, 3, 14)] // pravi oblik s e-Dnevnika (2026-11)
     public void ParseProfile_BirthDateFormats(string text, int y, int m, int d)
     {
         Assert.Equal(new DateOnly(y, m, d), IdentityRules.ParseProfile(ProfileHtml(birth: text))!.BirthDate);

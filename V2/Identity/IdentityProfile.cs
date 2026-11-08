@@ -25,8 +25,10 @@ namespace E_Dnevnik_API.V2.Identity
     {
         public const int ConsentAge = 16;
 
+        // e-Dnevnik /personal_data (2026-11): "Datum rođenja 14-03-2011" (crtice); stari oblik s točkama i dalje vrijedi
+
         private static readonly Regex BirthDateRx = new(
-            @"datum\s+ro(?:đ|d|dj)enja\D{0,120}?(\d{1,2})\s*\.\s*(\d{1,2})\s*\.\s*(\d{4})",
+            @"datum\s+ro(?:đ|d|dj)enja\D{0,120}?(\d{1,2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{4})",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant
         );
 
