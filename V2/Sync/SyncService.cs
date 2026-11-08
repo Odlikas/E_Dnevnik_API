@@ -132,7 +132,9 @@ namespace E_Dnevnik_API.V2.Sync
                         plan.Grades,
                         plan.Tests,
                         plan.Response.School,
-                        plan.Response.ClassName
+                        plan.Response.ClassName,
+                        plan.Timetable,
+                        today
                     ),
                     ct
                 );
@@ -151,7 +153,8 @@ namespace E_Dnevnik_API.V2.Sync
             List<ChildSubjectRow> ChildSubjects,
             List<GradeRow> Grades,
             List<CalendarTestRow> Tests,
-            SyncResponse Response
+            SyncResponse Response,
+            List<TimetableRow>? Timetable = null
         );
 
         // čisti dio: od skinutih stranica do redaka za bazu i sažetka (NewGrades puni pozivatelj)
@@ -216,6 +219,8 @@ namespace E_Dnevnik_API.V2.Sync
                 tests.Add(new ParsedTest(subjectName, subjectId, title, date.Value));
             }
 
+            var timetable = await TimetableAsync(snapshot.ScheduleHtml, idByName, resolver, ct);
+
             var (weakest, weakestAvg) = SyncSummary.Weakest(averages);
             var next = SyncSummary.NextTest(tests, today);
             var profile = snapshot.Profile;
@@ -240,8 +245,34 @@ namespace E_Dnevnik_API.V2.Sync
                     .Where(t => t.Date >= year.FirstDay && t.Date <= year.LastDay)
                     .Select(t => new CalendarTestRow(t.SubjectId, t.Title, t.Date))
                     .ToList(),
-                response
+                response,
+                timetable
             );
+        }
+
+        // raspored: predmet kao kod ocjena (isto ime -> isti id), nepoznati se stvaraju preko baze;
+        // null kad stranica nije prepoznata
+        public static async Task<List<TimetableRow>?> TimetableAsync(
+            string? scheduleHtml,
+            IReadOnlyDictionary<string, short> idByName,
+            SubjectResolver resolver,
+            CancellationToken ct = default
+        )
+        {
+            var lessons = SchedulePageParser.Parse(scheduleHtml);
+            if (lessons is null)
+                return null;
+            var rows = new List<TimetableRow>();
+            foreach (var l in lessons)
+            {
+                short? id = idByName.TryGetValue(SubjectMapper.Normalize(l.Subject), out var known)
+                    ? known
+                    : (await resolver.ResolveAnyAsync(l.Subject, ct))?.Id;
+                if (id is null)
+                    continue;
+                rows.Add(new TimetableRow(l.Weekday, l.Period, id.Value, l.StartsAt, l.EndsAt));
+            }
+            return rows;
         }
     }
 }

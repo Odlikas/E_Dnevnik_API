@@ -9,7 +9,13 @@ namespace E_Dnevnik_API.V2.Sync
     // GradeHtml: sirova stranica /grade/{id}, parsira je GradePageParser
     public record ScrapedSubject(SubjectInfo Info, string? GradeHtml);
 
-    public record EdnevnikSnapshot(StudentProfileInfo? Profile, List<ScrapedSubject> Subjects, List<TestInfo> Tests);
+    // ScheduleHtml: sirova stranica /schedule (SchedulePageParser), null kad je nismo uspjeli skinuti
+    public record EdnevnikSnapshot(
+        StudentProfileInfo? Profile,
+        List<ScrapedSubject> Subjects,
+        List<TestInfo> Tests,
+        string? ScheduleHtml = null
+    );
 
     public interface IEdnevnikSyncScraper
     {
@@ -67,6 +73,36 @@ namespace E_Dnevnik_API.V2.Sync
             return await response.Content.ReadAsStringAsync(ct);
         }
 
+        // sirovi HTML /schedule; raspored nije bitan za ocjene, pa greška ovdje ne ruši sync
+        // (null -> postojeći raspored u bazi ostaje); mrtva sesija se i dalje baca
+        private async Task<string?> FetchSchedulePageAsync(HttpClient client, string userKey, CancellationToken ct)
+        {
+            try
+            {
+                using var response = await client.GetAsync("https://ocjene.skole.hr/schedule", ct);
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning(
+                        "[v2/sync] schedule page returned {Status} for child {ChildId}",
+                        (int)response.StatusCode,
+                        userKey
+                    );
+                    return null;
+                }
+                return await response.Content.ReadAsStringAsync(ct);
+            }
+            catch (Exception ex)
+                when (ex is HttpRequestException || (ex is TaskCanceledException && !ct.IsCancellationRequested))
+            {
+                _logger.LogWarning(
+                    "[v2/sync] schedule page failed for child {ChildId}: {Type}",
+                    userKey,
+                    ex.GetType().Name
+                );
+                return null;
+            }
+        }
+
         public async Task<EdnevnikSnapshot> ScrapeAsync(
             IReadOnlyList<SyncCookie> cookies,
             string userKey,
@@ -113,7 +149,9 @@ namespace E_Dnevnik_API.V2.Sync
                     tests = new List<TestInfo>();
                 }
 
-                return new EdnevnikSnapshot(profile, subjects, tests);
+                var schedule = await FetchSchedulePageAsync(client, userKey, ct);
+
+                return new EdnevnikSnapshot(profile, subjects, tests, schedule);
             }
             catch (EdnevnikSessionInvalidException)
             {

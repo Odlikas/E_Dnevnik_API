@@ -9,6 +9,9 @@ namespace E_Dnevnik_API.V2.Sync
 
     public record CalendarTestRow(short? SubjectId, string Title, DateOnly EventDate);
 
+    // jedan redak public.timetable_entries; Weekday 1 = ponedjeljak
+    public record TimetableRow(short Weekday, short Period, short SubjectId, TimeOnly? StartsAt, TimeOnly? EndsAt);
+
     // sve što jedan sync piše u području D, u jednoj transakciji
     public record SyncWrite(
         Guid RunId,
@@ -19,7 +22,10 @@ namespace E_Dnevnik_API.V2.Sync
         List<GradeRow> Grades,
         List<CalendarTestRow> Tests,
         string? School = null,
-        string? ClassName = null
+        string? ClassName = null,
+        // null: raspored nije skinut ni prepoznat, postojeći ostaje; prazno: e-Dnevnik nema rasporeda
+        List<TimetableRow>? Timetable = null,
+        DateOnly? TimetableFrom = null
     );
 
     public interface ISyncRepository
@@ -222,6 +228,35 @@ namespace E_Dnevnik_API.V2.Sync
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
+            // raspored: obriši djetetov i upiši svježi
+            if (w.Timetable != null)
+            {
+                await using (var del = new NpgsqlCommand("delete from public.timetable_entries where child_id = $1", conn, tx))
+                {
+                    del.Parameters.Add(new NpgsqlParameter { Value = w.ChildId });
+                    await del.ExecuteNonQueryAsync(ct);
+                }
+                foreach (var t in w.Timetable)
+                {
+                    await using var cmd = new NpgsqlCommand(
+                        "insert into public.timetable_entries "
+                            + "(child_id, family_id, weekday, period, subject_id, starts_at, ends_at, valid_from) "
+                            + "values ($1, $2, $3, $4, $5, $6, $7, $8)",
+                        conn,
+                        tx
+                    );
+                    cmd.Parameters.Add(new NpgsqlParameter { Value = w.ChildId });
+                    cmd.Parameters.Add(new NpgsqlParameter { Value = w.FamilyId });
+                    cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Smallint, Value = t.Weekday });
+                    cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Smallint, Value = t.Period });
+                    cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Smallint, Value = t.SubjectId });
+                    cmd.Parameters.Add(Time(t.StartsAt));
+                    cmd.Parameters.Add(Time(t.EndsAt));
+                    cmd.Parameters.Add(new NpgsqlParameter { Value = w.TimetableFrom ?? DateOnly.FromDateTime(DateTime.UtcNow) });
+                    await cmd.ExecuteNonQueryAsync(ct);
+                }
+            }
+
             await FinishRunAsync(conn, tx, w.RunId, "ok", inserted, null, ct);
             await tx.CommitAsync(ct);
             return inserted;
@@ -261,6 +296,9 @@ namespace E_Dnevnik_API.V2.Sync
             cmd.Parameters.Add(Text(errorCode));
             await cmd.ExecuteNonQueryAsync(ct);
         }
+
+        private static NpgsqlParameter Time(TimeOnly? value) =>
+            new() { NpgsqlDbType = NpgsqlDbType.Time, Value = value is { } v ? v : DBNull.Value };
 
         private static NpgsqlParameter Text(string? value) =>
             new() { NpgsqlDbType = NpgsqlDbType.Text, Value = (object?)value ?? DBNull.Value };

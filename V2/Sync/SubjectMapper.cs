@@ -110,9 +110,13 @@ namespace E_Dnevnik_API.V2.Sync
         public SubjectRow? MapStatic(string? ednevnikName) => _mapper.Map(ednevnikName);
 
         // null za prazno ime i za sat razrednika
-        public async Task<SubjectRow?> ResolveAsync(string? ednevnikName, CancellationToken ct)
+        public Task<SubjectRow?> ResolveAsync(string? ednevnikName, CancellationToken ct) =>
+            SubjectMapper.IsHomeroom(ednevnikName) ? Task.FromResult<SubjectRow?>(null) : ResolveAnyAsync(ednevnikName, ct);
+
+        // kao ResolveAsync, ali i sat razrednika dobije predmet (raspored ga prikazuje)
+        public async Task<SubjectRow?> ResolveAnyAsync(string? ednevnikName, CancellationToken ct)
         {
-            if (string.IsNullOrWhiteSpace(ednevnikName) || SubjectMapper.IsHomeroom(ednevnikName))
+            if (string.IsNullOrWhiteSpace(ednevnikName))
                 return null;
             var name = ednevnikName.Trim();
             if (_cache.TryGetValue(name, out var cached))
