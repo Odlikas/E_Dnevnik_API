@@ -226,7 +226,7 @@ public class V2IdentityTests
         Assert.Equal(Caller, repo.Last!.UserId);
         Assert.Equal(IdentityRules.Hash(Salt, "ivan.maric@skole.hr"), repo.Last.Hash);
         Assert.Equal((short)1, repo.Last.Grade);
-        Assert.Equal((short)2011, repo.Last.BirthYear);
+        Assert.Null(repo.Last.BirthYear); // the birth date is never saved
         Assert.True(repo.Last.NeedsParentConsent);
         Assert.Equal(Child, sync.SyncedChild);
 

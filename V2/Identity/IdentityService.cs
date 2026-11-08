@@ -247,7 +247,7 @@ namespace E_Dnevnik_API.V2.Identity
                         grade.Value,
                         profile.ClassRaw,
                         profile.School,
-                        profile.BirthDate is { } b ? (short)b.Year : null,
+                        null, // datum rođenja se ne sprema nigdje (ni godina): služi samo za provjeru 16+ ovdje
                         IdentityRules.NeedsParentConsent(profile.BirthDate, today)
                     ),
                     ct
