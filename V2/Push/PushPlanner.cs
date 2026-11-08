@@ -10,8 +10,12 @@ namespace E_Dnevnik_API.V2.Push
         // dijete traži pomoć od roditelja (help_requests, trigger help_requests_notify); samo roditeljima
         public const string HelpRequest = "help_request";
 
+        // Odlikaš isključen na djetetovom mobitelu (devices.blocking_ok -> false, trigger
+        // devices_blocking_off_notify, D265 u aplikaciji); jedan red po roditelju, samo roditeljima
+        public const string Tamper = "tamper";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
-        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest };
+        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest, Tamper };
 
         // tipovi koje dobiva i dijete na svom mobitelu (uz roditelje)
         private static readonly HashSet<string> KidTypes = new() { NewGrade };
@@ -91,6 +95,13 @@ namespace E_Dnevnik_API.V2.Push
                 // D213: bez imena dok details nije uključen
                 var child = details ? rows[0].ChildFirstName?.Trim() : null;
                 return (string.IsNullOrEmpty(child) ? "Dijete treba pomoć" : child + " treba pomoć", OpenApp);
+            }
+            if (rows[0].Type == Tamper)
+            {
+                // F10: bez imena dok details nije uključen
+                var child = details ? rows[0].ChildFirstName?.Trim() : null;
+                return (string.IsNullOrEmpty(child) ? "Odlikaš je isključen" : "Odlikaš je isključen na mobitelu (" + child + ")",
+                    "Dopuštenje na djetetovom mobitelu je isključeno. Otvorite Odlikaš.");
             }
             var count = rows.Count;
             if (!details)
