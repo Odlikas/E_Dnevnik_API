@@ -216,6 +216,8 @@ namespace E_Dnevnik_API.V2.Identity
                 _logger.LogWarning("[v2/identity] personal_data had no student name");
                 return new IdentityOutcome(IdentityOutcomeKind.Unavailable);
             }
+            if (profile.BirthDate is null)
+                _logger.LogWarning("[v2/identity] no birth date; {Shape}", IdentityRules.BirthShape(html));
 
             // korisničko ime: s profila ako ga pokazuje, inače iz zahtjeva, ali samo ako odgovara imenu
             var login = profile.Username;

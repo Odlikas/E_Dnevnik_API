@@ -143,6 +143,16 @@ public class V2IdentityTests
     }
 
     [Fact]
+    public void BirthShape_MasksPersonalData()
+    {
+        var shape = IdentityRules.BirthShape(ProfileHtml(birth: "14.03.2011."));
+        Assert.Contains("Datum rođenja", shape);
+        Assert.Contains("99.99.9999", shape);
+        Assert.DoesNotContain("2011", shape);
+        Assert.DoesNotContain("Pula", shape);
+    }
+
+    [Fact]
     public void ParseProfile_NullWithoutName_BirthDateNullWhenMissing()
     {
         Assert.Null(IdentityRules.ParseProfile("<html><body><p>nešto drugo</p></body></html>"));

@@ -74,6 +74,26 @@ namespace E_Dnevnik_API.V2.Identity
             );
         }
 
+        // za dnevnik kad datum rođenja nije pročitan: oznake polja i oblik teksta oko "rođ"
+        // (znamenke -> 9, slova -> x), bez osobnih podataka
+        public static string BirthShape(string html)
+        {
+            var doc = new HtmlDocument();
+            doc.LoadHtml(html);
+            var text = Regex.Replace(HtmlEntity.DeEntitize(doc.DocumentNode.InnerText), @"\s+", " ");
+            static string Mask(string t) => Regex.Replace(Regex.Replace(t, @"\d", "9"), @"[^\W\d_]", "x");
+            var hits = Regex.Matches(text, @"ro(?:đ|d|dj)en", RegexOptions.IgnoreCase)
+                .Select(m => text.Substring(Math.Max(0, m.Index - 20), Math.Min(100, text.Length - Math.Max(0, m.Index - 20))))
+                .Select(t => Regex.Replace(t, @"(?i)(datum|mjesto|ro(?:đ|d|dj)enja?)|(.)", m => m.Groups[1].Success ? m.Value : Mask(m.Value)))
+                .Take(3);
+            var labels = doc.DocumentNode.Descendants()
+                .Where(n => n.GetAttributeValue("class", "").Contains("label"))
+                .Select(n => HtmlEntity.DeEntitize(n.InnerText).Trim())
+                .Where(t => t.Length is > 0 and < 40)
+                .Take(20);
+            return $"labels=[{string.Join(" | ", labels)}] near=[{string.Join(" || ", hits)}]";
+        }
+
         // hex sha256(salt + lower(username)), UTF-8
         public static string Hash(string salt, string username)
         {
