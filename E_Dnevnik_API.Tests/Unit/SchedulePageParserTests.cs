@@ -37,7 +37,10 @@ public class SchedulePageParserTests
         Assert.Equal("Fizika", tuesday[0].Subject);
 
         var wednesday = lessons.Where(l => l.Weekday == 3).ToList();
-        Assert.Equal(new[] { "Politika i gospodarstvo", "Sat razrednika" }, wednesday.Select(l => l.Subject));
+        Assert.Equal(
+            new[] { "Politika i gospodarstvo", "Sat razrednika" },
+            wednesday.Select(l => l.Subject)
+        );
         Assert.Equal(new TimeOnly(14, 0), wednesday[0].StartsAt);
 
         Assert.DoesNotContain(lessons, l => l.Weekday >= 4);
@@ -45,13 +48,15 @@ public class SchedulePageParserTests
     }
 
     [Fact]
-    public void Parse_NoTimetableIsEmpty() => Assert.Empty(SchedulePageParser.Parse(SchedulePageFixtures.NoTimetable)!);
+    public void Parse_NoTimetableIsEmpty() =>
+        Assert.Empty(SchedulePageParser.Parse(SchedulePageFixtures.NoTimetable)!);
 
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData(SchedulePageFixtures.Unknown)]
-    public void Parse_UnknownPageIsNull(string? html) => Assert.Null(SchedulePageParser.Parse(html));
+    public void Parse_UnknownPageIsNull(string? html) =>
+        Assert.Null(SchedulePageParser.Parse(html));
 
     [Fact]
     public async Task Timetable_MapsSubjectsLikeGrades()
@@ -66,9 +71,14 @@ public class SchedulePageParserTests
             }
         );
         // Matematika je u ovom syncu već dobila id s popisa predmeta
-        var idByName = new Dictionary<string, short> { [SubjectMapper.Normalize("Matematika")] = 1 };
+        var idByName = new Dictionary<string, short>
+        {
+            [SubjectMapper.Normalize("Matematika")] = 1,
+        };
 
-        var rows = (await SyncService.TimetableAsync(SchedulePageFixtures.Week, idByName, resolver))!;
+        var rows = (
+            await SyncService.TimetableAsync(SchedulePageFixtures.Week, idByName, resolver)
+        )!;
 
         Assert.Equal(9, rows.Count);
         Assert.Equal(new TimetableRow(1, 1, 1, new TimeOnly(8, 0), new TimeOnly(8, 45)), rows[0]);
@@ -77,14 +87,30 @@ public class SchedulePageParserTests
         Assert.Equal((short)8, rows[3].SubjectId);
         // nepoznat predmet i sat razrednika: stvara ih baza, svaki jednom
         Assert.Equal(new[] { "Politika i gospodarstvo", "Sat razrednika" }, lookups);
-        Assert.Equal(new short[] { 101, 102 }, rows.Where(r => r.Weekday == 3).Select(r => r.SubjectId));
+        Assert.Equal(
+            new short[] { 101, 102 },
+            rows.Where(r => r.Weekday == 3).Select(r => r.SubjectId)
+        );
     }
 
     [Fact]
     public async Task Timetable_NullWhenPageMissing()
     {
-        var resolver = new SubjectResolver(new SubjectMapper(Seed), (_, _) => Task.FromResult((short)0));
-        Assert.Null(await SyncService.TimetableAsync(null, new Dictionary<string, short>(), resolver));
-        Assert.Empty((await SyncService.TimetableAsync(SchedulePageFixtures.NoTimetable, new Dictionary<string, short>(), resolver))!);
+        var resolver = new SubjectResolver(
+            new SubjectMapper(Seed),
+            (_, _) => Task.FromResult((short)0)
+        );
+        Assert.Null(
+            await SyncService.TimetableAsync(null, new Dictionary<string, short>(), resolver)
+        );
+        Assert.Empty(
+            (
+                await SyncService.TimetableAsync(
+                    SchedulePageFixtures.NoTimetable,
+                    new Dictionary<string, short>(),
+                    resolver
+                )
+            )!
+        );
     }
 }

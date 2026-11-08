@@ -5,7 +5,13 @@ using HtmlAgilityPack;
 namespace E_Dnevnik_API.V2.Sync
 {
     // jedan sat iz /schedule; Weekday 1 = ponedjeljak ... 7 = nedjelja
-    public record ParsedLesson(short Weekday, short Period, string Subject, TimeOnly? StartsAt, TimeOnly? EndsAt);
+    public record ParsedLesson(
+        short Weekday,
+        short Period,
+        string Subject,
+        TimeOnly? StartsAt,
+        TimeOnly? EndsAt
+    );
 
     // parsira sirovu stranicu https://ocjene.skole.hr/schedule (struktura kao kod ScheduleTableScraperService):
     // po danu div.flex-table-schedule[data-action-id=PON|UTO|...], svaki sat je div.row (ne header),
@@ -28,7 +34,10 @@ namespace E_Dnevnik_API.V2.Sync
             RegexOptions.Compiled
         );
 
-        private static readonly Regex LeadingNumber = new(@"^(\d{1,2})\.?(?:\s|$)", RegexOptions.Compiled);
+        private static readonly Regex LeadingNumber = new(
+            @"^(\d{1,2})\.?(?:\s|$)",
+            RegexOptions.Compiled
+        );
 
         // null: stranica nije prepoznata (ne diramo postojeći raspored)
         // prazna lista: e-Dnevnik kaže da raspored nije upisan ("Učenik nema upisan raspored.")
@@ -40,7 +49,9 @@ namespace E_Dnevnik_API.V2.Sync
             var doc = new HtmlDocument();
             doc.LoadHtml(html);
 
-            var tables = doc.DocumentNode.SelectNodes("//div[contains(@class, 'flex-table-schedule')]");
+            var tables = doc.DocumentNode.SelectNodes(
+                "//div[contains(@class, 'flex-table-schedule')]"
+            );
             if (tables is null)
             {
                 var noRecords = doc.DocumentNode.SelectSingleNode(
@@ -54,7 +65,11 @@ namespace E_Dnevnik_API.V2.Sync
             foreach (var (code, weekday) in Days)
             {
                 var period = 0;
-                foreach (var table in tables.Where(t => t.GetAttributeValue("data-action-id", "") == code))
+                foreach (
+                    var table in tables.Where(t =>
+                        t.GetAttributeValue("data-action-id", "") == code
+                    )
+                )
                 {
                     var rows = table.SelectNodes(
                         ".//div[contains(concat(' ', normalize-space(@class), ' '), ' row ') "
@@ -65,10 +80,15 @@ namespace E_Dnevnik_API.V2.Sync
                     foreach (var row in rows)
                     {
                         period++;
-                        var cells = row.SelectNodes(".//div[contains(concat(' ', normalize-space(@class), ' '), ' cell ')]");
+                        var cells = row.SelectNodes(
+                            ".//div[contains(concat(' ', normalize-space(@class), ' '), ' cell ')]"
+                        );
                         if (cells is null)
                             continue;
-                        var info = cells.Where(c => IsNoBox(c)).Select(c => Text(c.InnerText)).ToList();
+                        var info = cells
+                            .Where(c => IsNoBox(c))
+                            .Select(c => Text(c.InnerText))
+                            .ToList();
                         var subjectCell = cells.FirstOrDefault(c => !IsNoBox(c));
 
                         // broj sata iz no-box ćelije ("3." ili "3"), inače redni broj retka
@@ -90,7 +110,9 @@ namespace E_Dnevnik_API.V2.Sync
                         if (!seen.Add((weekday, (short)number)))
                             continue;
 
-                        var (start, end) = Times(string.Join(" ", info.Append(Text(row.InnerText))));
+                        var (start, end) = Times(
+                            string.Join(" ", info.Append(Text(row.InnerText)))
+                        );
                         lessons.Add(new ParsedLesson(weekday, (short)number, subject, start, end));
                     }
                 }
@@ -99,13 +121,14 @@ namespace E_Dnevnik_API.V2.Sync
         }
 
         private static bool IsNoBox(HtmlNode cell) =>
-            cell.GetAttributeValue("class", "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("no-box");
+            cell.GetAttributeValue("class", "")
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Contains("no-box");
 
         // prvi neprazni tekst u ćeliji; "Kemija, Fizika" (grupe) -> prvi predmet
         private static string SubjectName(HtmlNode cell)
         {
-            var first = cell
-                .DescendantsAndSelf()
+            var first = cell.DescendantsAndSelf()
                 .Where(n => n.NodeType == HtmlNodeType.Text)
                 .Select(n => Text(n.InnerText))
                 .FirstOrDefault(t => t.Length > 0);
@@ -120,7 +143,10 @@ namespace E_Dnevnik_API.V2.Sync
             var m = TimeRange.Match(text);
             if (!m.Success)
                 return (null, null);
-            return (Time(m.Groups[1].Value, m.Groups[2].Value), Time(m.Groups[3].Value, m.Groups[4].Value));
+            return (
+                Time(m.Groups[1].Value, m.Groups[2].Value),
+                Time(m.Groups[3].Value, m.Groups[4].Value)
+            );
         }
 
         private static TimeOnly? Time(string h, string m)
@@ -130,6 +156,7 @@ namespace E_Dnevnik_API.V2.Sync
             return hour < 24 && minute < 60 ? new TimeOnly(hour, minute) : null;
         }
 
-        private static string Text(string raw) => Regex.Replace(WebUtility.HtmlDecode(raw), @"\s+", " ").Trim();
+        private static string Text(string raw) =>
+            Regex.Replace(WebUtility.HtmlDecode(raw), @"\s+", " ").Trim();
     }
 }
