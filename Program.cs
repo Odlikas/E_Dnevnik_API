@@ -190,6 +190,12 @@ builder.Services.AddSingleton<E_Dnevnik_API.V2.Sync.ISyncRepository, E_Dnevnik_A
 builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.IEdnevnikSyncScraper, E_Dnevnik_API.V2.Sync.EdnevnikSyncScraper>();
 builder.Services.AddScoped<E_Dnevnik_API.V2.Sync.ISyncService, E_Dnevnik_API.V2.Sync.SyncService>();
 
+// --- v2: push obavijesti (public.notifications -> FCM, projekt odlikas-v2) ---
+// bez Supabasea ili FIREBASE_V2_CREDENTIALS_FILE / FIREBASE_V2_SERVICE_ACCOUNT_JSON radnik se samo ugasi
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.IPushRepository, E_Dnevnik_API.V2.Push.PushRepository>();
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.IPushSender, E_Dnevnik_API.V2.Push.FcmPushSender>();
+builder.Services.AddHostedService<E_Dnevnik_API.V2.Push.PushWorker>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
