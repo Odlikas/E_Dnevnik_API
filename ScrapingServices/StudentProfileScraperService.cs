@@ -20,6 +20,9 @@ namespace E_Dnevnik_API.ScrapingServices
             return ExtractScrapeData(scrapeHtmlContent);
         }
 
+        // isto parsiranje za HTML koji je netko drugi već skinuo (/v2/identity)
+        public StudentProfileResult Parse(string htmlContent) => ExtractScrapeData(htmlContent);
+
         private StudentProfileResult ExtractScrapeData(string htmlContent)
         {
             var htmlDoc = new HtmlDocument();
