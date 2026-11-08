@@ -47,7 +47,7 @@ public class V2PushTests
     [Fact]
     public void UnknownTypesAreNotPlanned()
     {
-        Assert.Empty(PushPlanner.Plan(new[] { Grade(type: "tamper") }, All, details: true));
+        Assert.Empty(PushPlanner.Plan(new[] { Grade(type: "agreement_change") }, All, details: true));
     }
 
     [Fact]
@@ -60,6 +60,20 @@ public class V2PushTests
         Assert.Equal("help_request", plan[0].Data["type"]);
         var detailed = PushPlanner.Plan(new[] { help }, All, details: true);
         Assert.Equal("Ema treba pomoć", detailed[0].Title);
+    }
+
+    [Fact]
+    public void TamperGoesOnlyToThatParentWithoutNamesByDefault()
+    {
+        var tamper = Grade(type: PushPlanner.Tamper, note: null, element: null, parent: Mama);
+        var plan = PushPlanner.Plan(new[] { tamper }, All, details: false);
+        Assert.Equal(new[] { "mama-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Odlikaš je isključen", plan[0].Title);
+        Assert.DoesNotContain("Ema", plan[0].Body);
+        Assert.Equal("tamper", plan[0].Data["type"]);
+        Assert.Equal(Child.ToString(), plan[0].Data["child_id"]);
+        var detailed = PushPlanner.Plan(new[] { tamper }, All, details: true);
+        Assert.Equal("Odlikaš je isključen na mobitelu (Ema)", detailed[0].Title);
     }
 
     [Fact]
