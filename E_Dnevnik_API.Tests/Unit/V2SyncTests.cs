@@ -436,6 +436,8 @@ public class V2SyncTests
         Assert.Equal("Matematika", r.NextTestSubject);
         Assert.Equal("2026-11-10", r.NextTestOn);
         Assert.Empty(r.UnmappedSubjects);
+        // bez stranice rasporeda postojeći raspored ostaje
+        Assert.Null(plan.Timetable);
     }
 
     [Fact]
