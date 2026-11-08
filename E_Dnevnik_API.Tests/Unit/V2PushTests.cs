@@ -50,6 +50,26 @@ public class V2PushTests
         Assert.Empty(PushPlanner.Plan(new[] { Grade(type: "tamper") }, All, details: true));
     }
 
+    [Fact]
+    public void HelpRequestGoesOnlyToParentsWithoutNamesByDefault()
+    {
+        var help = Grade(type: PushPlanner.HelpRequest, note: null, element: null);
+        var plan = PushPlanner.Plan(new[] { help }, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Dijete treba pomoć", p.Title));
+        Assert.Equal("help_request", plan[0].Data["type"]);
+        var detailed = PushPlanner.Plan(new[] { help }, All, details: true);
+        Assert.Equal("Ema treba pomoć", detailed[0].Title);
+    }
+
+    [Fact]
+    public void GradesAndHelpRequestsAreSeparatePushes()
+    {
+        var plan = PushPlanner.Plan(new[] { Grade(), Grade(type: PushPlanner.HelpRequest) }, new[] { MamaR }, details: false);
+        Assert.Equal(2, plan.Count);
+        Assert.Equal(new[] { "Nova ocjena", "Dijete treba pomoć" }, plan.Select(p => p.Title));
+    }
+
     // --- text ---
 
     [Fact]

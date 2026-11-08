@@ -7,8 +7,11 @@ namespace E_Dnevnik_API.V2.Push
     {
         public const string NewGrade = "new_grade";
 
+        // dijete traži pomoć od roditelja (help_requests, trigger help_requests_notify); samo roditeljima
+        public const string HelpRequest = "help_request";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
-        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade };
+        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest };
 
         // tipovi koje dobiva i dijete na svom mobitelu (uz roditelje)
         private static readonly HashSet<string> KidTypes = new() { NewGrade };
@@ -23,7 +26,7 @@ namespace E_Dnevnik_API.V2.Push
             bool details
         )
         {
-            // token -> (primatelj, redovi) redom kojim su stigli
+            // (token, tip) -> (primatelj, redovi) redom kojim su stigli: ocjene se spajaju, tipovi ne
             var perToken = new Dictionary<string, (PushRecipient Who, List<PendingPush> Rows)>();
             var order = new List<string>();
             foreach (var row in rows)
@@ -32,11 +35,12 @@ namespace E_Dnevnik_API.V2.Push
                     continue;
                 foreach (var r in RecipientsOf(row, recipients))
                 {
-                    if (!perToken.TryGetValue(r.Token, out var slot))
+                    var key = r.Token + "|" + row.Type;
+                    if (!perToken.TryGetValue(key, out var slot))
                     {
                         slot = (r, new List<PendingPush>());
-                        perToken[r.Token] = slot;
-                        order.Add(r.Token);
+                        perToken[key] = slot;
+                        order.Add(key);
                     }
                     if (!slot.Rows.Contains(row))
                         slot.Rows.Add(row);
@@ -44,9 +48,10 @@ namespace E_Dnevnik_API.V2.Push
             }
 
             var result = new List<OutgoingPush>();
-            foreach (var token in order)
+            foreach (var key in order)
             {
-                var (who, list) = perToken[token];
+                var (who, list) = perToken[key];
+                var token = who.Token;
                 var (title, body) = Text(list, who.Kind, details);
                 var data = new Dictionary<string, string>
                 {
@@ -81,6 +86,12 @@ namespace E_Dnevnik_API.V2.Push
 
         public static (string Title, string Body) Text(IReadOnlyList<PendingPush> rows, RecipientKind kind, bool details)
         {
+            if (rows[0].Type == HelpRequest)
+            {
+                // D213: bez imena dok details nije uključen
+                var child = details ? rows[0].ChildFirstName?.Trim() : null;
+                return (string.IsNullOrEmpty(child) ? "Dijete treba pomoć" : child + " treba pomoć", OpenApp);
+            }
             var count = rows.Count;
             if (!details)
                 return (count == 1 ? "Nova ocjena" : CountTitle(count), OpenApp);
