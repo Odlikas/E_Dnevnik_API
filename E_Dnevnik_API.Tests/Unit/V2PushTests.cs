@@ -77,6 +77,16 @@ public class V2PushTests
     }
 
     [Fact]
+    public void TimeAddedGoesOnlyToTheKidPhone()
+    {
+        var added = Grade(type: PushPlanner.TimeAdded, subject: null!, value: 30, note: null, element: null);
+        var plan = PushPlanner.Plan(new[] { added }, All, details: false);
+        Assert.Equal(new[] { "kid-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Dodano ti je 30 min", plan[0].Title);
+        Assert.Equal("time_added", plan[0].Data["type"]);
+    }
+
+    [Fact]
     public void GradesAndHelpRequestsAreSeparatePushes()
     {
         var plan = PushPlanner.Plan(new[] { Grade(), Grade(type: PushPlanner.HelpRequest) }, new[] { MamaR }, details: false);
