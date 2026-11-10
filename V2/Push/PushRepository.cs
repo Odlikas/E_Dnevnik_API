@@ -10,7 +10,9 @@ namespace E_Dnevnik_API.V2.Push
         // neposlani redovi zadnja 24 h; zaključani dok se ne pošalju, drugi radnik ih preskače
         public const string ClaimSql =
             "select n.id, n.family_id, n.parent_id, n.child_id, n.type, c.first_name, s.name_hr, "
-            + "coalesce(g.value, (n.payload ->> 'value')::smallint), g.note, g.grading_element "
+            + "coalesce(g.value, (n.payload ->> 'value')::smallint), g.note, g.grading_element, "
+            + "case when n.payload ->> 'request_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
+            + "then (n.payload ->> 'request_id')::uuid end "
             + "from public.notifications n "
             + "left join public.children c on c.id = n.child_id "
             + "left join public.grades g on g.id = (n.payload ->> 'grade_id')::uuid "
@@ -73,7 +75,8 @@ namespace E_Dnevnik_API.V2.Push
                             r.IsDBNull(6) ? null : r.GetString(6),
                             r.IsDBNull(7) ? null : r.GetInt16(7),
                             r.IsDBNull(8) ? null : r.GetString(8),
-                            r.IsDBNull(9) ? null : r.GetString(9)
+                            r.IsDBNull(9) ? null : r.GetString(9),
+                            r.IsDBNull(10) ? null : r.GetGuid(10)
                         ));
                 }
 
