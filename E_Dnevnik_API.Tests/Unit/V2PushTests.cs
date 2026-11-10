@@ -86,6 +86,55 @@ public class V2PushTests
         Assert.Equal("time_added", plan[0].Data["type"]);
     }
 
+    private static readonly Guid Request = Guid.Parse("eeeeeeee-0000-0000-0000-000000000001");
+
+    private static PendingPush Ask(string type, short? value = 30, Guid? request = null) =>
+        new(Guid.NewGuid(), Family, null, Child, type, "Ema", null, value, null, null, request ?? Request);
+
+    [Fact]
+    public void TimeRequestGoesOnlyToParentsWithoutNamesByDefault()
+    {
+        var plan = PushPlanner.Plan(new[] { Ask(PushPlanner.TimeRequest) }, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Dijete traži još vremena", p.Title));
+        Assert.All(plan, p => Assert.Equal("Otvori Odlikaš.", p.Body));
+        Assert.All(plan, p => Assert.DoesNotContain("Ema", p.Title + p.Body));
+        Assert.Equal("time_request", plan[0].Data["type"]);
+        Assert.Equal(Request.ToString(), plan[0].Data["request_id"]);
+        Assert.Equal(Child.ToString(), plan[0].Data["child_id"]);
+        var detailed = PushPlanner.Plan(new[] { Ask(PushPlanner.TimeRequest) }, All, details: true);
+        Assert.Equal("Ema traži 30 min", detailed[0].Title);
+    }
+
+    [Fact]
+    public void TwoTimeRequestsMergeAndOpenObavijesti()
+    {
+        var rows = new[] { Ask(PushPlanner.TimeRequest), Ask(PushPlanner.TimeRequest, request: Guid.NewGuid()) };
+        var plan = PushPlanner.Plan(rows, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.Equal(2, plan[0].Notifications.Count);
+        Assert.False(plan[0].Data.ContainsKey("request_id"));
+    }
+
+    [Fact]
+    public void TimeDeclinedGoesOnlyToTheKidPhoneWithoutTheOutcome()
+    {
+        var plan = PushPlanner.Plan(new[] { Ask(PushPlanner.TimeDeclined, value: null) }, All, details: true);
+        Assert.Equal(new[] { "kid-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Roditelj je odgovorio", plan[0].Title);
+        Assert.DoesNotContain("odbi", plan[0].Title + plan[0].Body);
+        Assert.Equal("time_declined", plan[0].Data["type"]);
+        Assert.Equal(Request.ToString(), plan[0].Data["request_id"]);
+    }
+
+    [Fact]
+    public void TimeRequestTypesAreClaimed()
+    {
+        Assert.Contains(PushPlanner.TimeRequest, PushPlanner.KnownTypes);
+        Assert.Contains(PushPlanner.TimeDeclined, PushPlanner.KnownTypes);
+        Assert.Contains("request_id", PushRepository.ClaimSql);
+    }
+
     [Fact]
     public void GradesAndHelpRequestsAreSeparatePushes()
     {

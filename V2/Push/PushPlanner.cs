@@ -18,14 +18,23 @@ namespace E_Dnevnik_API.V2.Push
         // unlock_grants_time_added_notify, D269 u aplikaciji); minute su u payload 'value'; samo djetetu
         public const string TimeAdded = "time_added";
 
+        // dijete traži još vremena (time_requests insert, trigger time_requests_notify, D291 u
+        // aplikaciji); payload 'request_id' + minute u 'value'; samo roditeljima
+        public const string TimeRequest = "time_request";
+
+        // roditelj je odbio zahtjev za vrijeme (time_requests pending -> denied, isti trigger, D291);
+        // samo djetetu. Odobrenje stiže kao time_added.
+        public const string TimeDeclined = "time_declined";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
-        public static readonly IReadOnlyCollection<string> KnownTypes = new[] { NewGrade, HelpRequest, Tamper, TimeAdded };
+        public static readonly IReadOnlyCollection<string> KnownTypes =
+            new[] { NewGrade, HelpRequest, Tamper, TimeAdded, TimeRequest, TimeDeclined };
 
         // tipovi koje dobiva i dijete na svom mobitelu (uz roditelje)
-        private static readonly HashSet<string> KidTypes = new() { NewGrade, TimeAdded };
+        private static readonly HashSet<string> KidTypes = new() { NewGrade, TimeAdded, TimeDeclined };
 
         // tipovi koje dobiva samo dijete (roditelji ih ne dobivaju)
-        private static readonly HashSet<string> KidOnlyTypes = new() { TimeAdded };
+        private static readonly HashSet<string> KidOnlyTypes = new() { TimeAdded, TimeDeclined };
 
         private const string OpenApp = "Otvori Odlikaš i pogledaj.";
 
@@ -72,6 +81,9 @@ namespace E_Dnevnik_API.V2.Push
                 };
                 if (list[0].ChildId is Guid child)
                     data["child_id"] = child.ToString();
+                // jedan zahtjev: aplikacija ga otvara izravno; više njih: otvara Obavijesti
+                if (list.Count == 1 && list[0].RequestId is Guid request)
+                    data["request_id"] = request.ToString();
                 result.Add(new OutgoingPush(token, who.Kind, title, body, data, list.Select(r => r.Id).ToList()));
             }
             return result;
@@ -111,6 +123,20 @@ namespace E_Dnevnik_API.V2.Push
                 var minutes = rows.Sum(r => r.Value ?? 0);
                 return (minutes > 0 ? $"Dodano ti je {minutes} min" : "Dodano ti je vrijeme",
                     "Imaš više slobodnog vremena danas. Otvori Odlikaš.");
+            }
+            if (rows[0].Type == TimeRequest)
+            {
+                // D213: bez imena dok details nije uključen
+                var child = details ? rows[0].ChildFirstName?.Trim() : null;
+                if (string.IsNullOrEmpty(child))
+                    return ("Dijete traži još vremena", "Otvori Odlikaš.");
+                var minutes = rows.Count == 1 ? rows[0].Value ?? 0 : 0;
+                return (minutes > 0 ? $"{child} traži {minutes} min" : child + " traži još vremena", "Otvori Odlikaš.");
+            }
+            if (rows[0].Type == TimeDeclined)
+            {
+                // bez ishoda u tekstu (ide samo djetetu, preko Googlea); aplikacija pokaže odgovor
+                return ("Roditelj je odgovorio", OpenApp);
             }
             if (rows[0].Type == Tamper)
             {
