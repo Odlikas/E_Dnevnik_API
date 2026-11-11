@@ -68,9 +68,10 @@ namespace E_Dnevnik_API.ScrapingServices
             var classMaster =
                 classMasterNode != null ? CleanText(classMasterNode.InnerText) : "N/A";
 
-            // program učenja je na devetom stupcu u tablici s osobnim podacima
+            // program učenja: redak s oznakom "Program" (redoslijed redaka nije stalan; na 9. mjestu
+            // može biti ime roditelja)
             var studentProgramNode = htmlDoc.DocumentNode.SelectSingleNode(
-                "(//div[@class='l-two-columns'])[9]//span[@class='column']"
+                "//div[@class='l-two-columns'][span[contains(@class,'bold')][normalize-space()='Program']]/span[@class='column']"
             );
             var studentProgram =
                 studentProgramNode != null ? CleanText(studentProgramNode.InnerText) : "N/A";

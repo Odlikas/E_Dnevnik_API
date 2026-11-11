@@ -36,12 +36,9 @@ public class V2IdentityTests
           <div class="l-two-columns"><span class="label">Datum rođenja</span><span class="column">{birth}</span></div>
           <div class="l-two-columns"><span class="label">Mjesto rođenja</span><span class="column">Pula</span></div>
           {(username is null ? "" : $"<div class=\"l-two-columns\"><span class=\"label\">Korisnička oznaka</span><span class=\"column\">{username}</span></div>")}
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          {(username is null ? "<div class=\"l-two-columns\"></div>" : "")}
-          <div class="l-two-columns"><span class="column">opća gimnazija</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Adresa</span><span class="column">Ulica 1</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Program</span><span class="column">opća gimnazija<br></span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Ime i prezime</span><span class="column">Roditelj Anić</span></div>
         </div>
         </body></html>
         """;
