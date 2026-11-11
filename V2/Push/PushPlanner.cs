@@ -59,7 +59,8 @@ namespace E_Dnevnik_API.V2.Push
                     continue;
                 foreach (var r in RecipientsOf(row, recipients))
                 {
-                    var key = r.Token + "|" + row.Type;
+                    // D314: s detaljima se ocjene dvoje djece ne spajaju (naslov nosi ime jednog)
+                    var key = r.Token + "|" + row.Type + (details ? "|" + row.ChildId : "");
                     if (!perToken.TryGetValue(key, out var slot))
                     {
                         slot = (r, new List<PendingPush>());
