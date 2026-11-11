@@ -42,8 +42,12 @@ namespace E_Dnevnik_API.V2.Push
         // FCM kaže da token više ne vrijedi: brišemo ga
         DeadToken,
 
-        // ostalo (privremeno ili nepoznato); red se ipak označi poslanim
+        // trajna ili nepoznata greška; red se ipak označi poslanim
         Failed,
+
+        // FCM je privremeno nedostupan (Unavailable, Internal, QuotaExceeded): red ostaje
+        // neposlan i ide u sljedećem krugu (D314)
+        Retry,
     }
 
     public record SendResult(string Token, SendStatus Status);

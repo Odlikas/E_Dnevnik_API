@@ -85,8 +85,10 @@ namespace E_Dnevnik_API.V2.Push
             var results = pushes.Count == 0 ? Array.Empty<SendResult>() : await _sender.SendAsync(pushes, ct);
             var dead = results.Where(r => r.Status == SendStatus.DeadToken).Select(r => r.Token).Distinct().ToList();
 
-            // svaki zaključani red je obrađen, i kad nema kome poslati (nitko nema token)
-            await claim.CompleteAsync(claim.Rows.Select(r => r.Id).ToList(), dead, ct);
+            // svaki zaključani red je obrađen, i kad nema kome poslati (nitko nema token), osim reda
+            // kojem su sva slanja privremeno pala: on čeka sljedeći krug (D314)
+            var retry = RetryRows(pushes, results);
+            await claim.CompleteAsync(claim.Rows.Select(r => r.Id).Where(id => !retry.Contains(id)).ToList(), dead, ct);
             _logger.LogInformation(
                 "[push] {Rows} obavijesti, {Sent} poslano, {Dead} nevaljanih tokena obrisano.",
                 claim.Rows.Count,
@@ -94,6 +96,18 @@ namespace E_Dnevnik_API.V2.Push
                 dead.Count
             );
             return claim.Rows.Count;
+        }
+
+        // redovi čija su sva slanja dobila Retry (rezultati su redom kao pushevi)
+        public static HashSet<Guid> RetryRows(IReadOnlyList<OutgoingPush> pushes, IReadOnlyList<SendResult> results)
+        {
+            var anyDone = new HashSet<Guid>();
+            var anyRetry = new HashSet<Guid>();
+            for (var i = 0; i < pushes.Count && i < results.Count; i++)
+                foreach (var id in pushes[i].Notifications)
+                    (results[i].Status == SendStatus.Retry ? anyRetry : anyDone).Add(id);
+            anyRetry.ExceptWith(anyDone);
+            return anyRetry;
         }
     }
 }

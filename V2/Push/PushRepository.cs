@@ -10,13 +10,17 @@ namespace E_Dnevnik_API.V2.Push
         // neposlani redovi zadnja 24 h; zaključani dok se ne pošalju, drugi radnik ih preskače
         public const string ClaimSql =
             "select n.id, n.family_id, n.parent_id, n.child_id, n.type, c.first_name, s.name_hr, "
-            + "coalesce(g.value, (n.payload ->> 'value')::smallint), g.note, g.grading_element, "
+            // D314: every cast is guarded, so one malformed row can't fail the whole claim
+            + "coalesce(g.value, case when n.payload ->> 'value' ~ '^[0-9]{1,4}$' then (n.payload ->> 'value')::smallint end), "
+            + "g.note, g.grading_element, "
             + "case when n.payload ->> 'request_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
             + "then (n.payload ->> 'request_id')::uuid end "
             + "from public.notifications n "
             + "left join public.children c on c.id = n.child_id "
-            + "left join public.grades g on g.id = (n.payload ->> 'grade_id')::uuid "
-            + "left join public.subjects s on s.id = (n.payload ->> 'subject_id')::smallint "
+            + "left join public.grades g on g.id = case when n.payload ->> 'grade_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
+            + "then (n.payload ->> 'grade_id')::uuid end "
+            + "left join public.subjects s on s.id = case when n.payload ->> 'subject_id' ~ '^[0-9]{1,4}$' "
+            + "then (n.payload ->> 'subject_id')::smallint end "
             + "where n.pushed_at is null and n.created_at > now() - interval '24 hours' and n.type = any($1) "
             + "order by n.created_at "
             + "limit $2 "

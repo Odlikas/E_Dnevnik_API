@@ -94,6 +94,9 @@ namespace E_Dnevnik_API.V2.Push
                 MessagingErrorCode.SenderIdMismatch => SendStatus.DeadToken,
                 MessagingErrorCode.InvalidArgument
                     when ex.Message.Contains("token", StringComparison.OrdinalIgnoreCase) => SendStatus.DeadToken,
+                MessagingErrorCode.Unavailable => SendStatus.Retry,
+                MessagingErrorCode.Internal => SendStatus.Retry,
+                MessagingErrorCode.QuotaExceeded => SendStatus.Retry,
                 _ => SendStatus.Failed,
             };
 

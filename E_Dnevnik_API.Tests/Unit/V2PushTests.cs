@@ -77,6 +77,36 @@ public class V2PushTests
     }
 
     [Fact]
+    public void WithDetailsTwoChildrensGradesAreNotMerged()
+    {
+        var ema = Grade();
+        var luka = Grade(subject: "Hrvatski") with { ChildId = Guid.NewGuid(), ChildFirstName = "Luka" };
+        var plan = PushPlanner.Plan(new[] { ema, luka }, new[] { MamaR }, details: true);
+        Assert.Equal(2, plan.Count);
+        Assert.Contains(plan, p => p.Title.StartsWith("Ema"));
+        Assert.Contains(plan, p => p.Title.StartsWith("Luka"));
+        // without details the text has no names, so one push is fine
+        Assert.Single(PushPlanner.Plan(new[] { ema, luka }, new[] { MamaR }, details: false));
+    }
+
+    [Fact]
+    public void OnlyRowsWhosePushesAllFailedTemporarilyWaitForTheNextRound()
+    {
+        Guid a = Guid.NewGuid(), b = Guid.NewGuid(), c = Guid.NewGuid();
+        OutgoingPush Push(string token, params Guid[] ids) =>
+            new(token, RecipientKind.Parent, "t", "b", new Dictionary<string, string>(), ids);
+        var pushes = new[] { Push("m", a, b), Push("t", b), Push("k", c) };
+        var results = new[]
+        {
+            new SendResult("m", SendStatus.Retry),
+            new SendResult("t", SendStatus.Sent),
+            new SendResult("k", SendStatus.Retry),
+        };
+        var retry = PushWorker.RetryRows(pushes, results);
+        Assert.Equal(new[] { a, c }.OrderBy(x => x), retry.OrderBy(x => x));
+    }
+
+    [Fact]
     public void PhoneSilentGoesOnlyToThatParentWithoutNamesByDefault()
     {
         var silent = Grade(type: PushPlanner.PhoneSilent, note: null, element: null, parent: Mama);
