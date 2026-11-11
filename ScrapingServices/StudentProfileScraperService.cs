@@ -1,4 +1,4 @@
-using System.Text.RegularExpressions;
+﻿using System.Text.RegularExpressions;
 using E_Dnevnik_API.Models.ScrapeStudentProfile;
 using HtmlAgilityPack;
 
@@ -76,26 +76,6 @@ namespace E_Dnevnik_API.ScrapingServices
             var studentProgram =
                 studentProgramNode != null ? CleanText(studentProgramNode.InnerText) : "N/A";
 
-            // roditelji: redci "Ime i prezime" nakon retka "Program" (učenikovo ime su zasebni "Ime" i "Prezime")
-            var parentNames = new List<string>();
-            var rows = htmlDoc.DocumentNode.SelectNodes("//div[@class='l-two-columns']");
-            if (rows != null)
-            {
-                var afterProgram = false;
-                foreach (var row in rows)
-                {
-                    var label = Plain(row.SelectSingleNode("span[contains(@class,'bold')]")?.InnerText);
-                    if (label == "Program")
-                        afterProgram = true;
-                    else if (afterProgram && label == "Ime i prezime")
-                    {
-                        var parent = Plain(row.SelectSingleNode("span[@class='column']")?.InnerText);
-                        if (parent.Length is > 0 and <= 120 && !parentNames.Contains(parent) && parentNames.Count < 2)
-                            parentNames.Add(parent);
-                    }
-                }
-            }
-
             var studentProfile = new StudentProfileInfo
             {
                 StudentName = studentName,
@@ -106,17 +86,12 @@ namespace E_Dnevnik_API.ScrapingServices
                 StudentSchoolCity = studentSchoolCity,
                 ClassMaster = classMaster,
                 StudentProgram = studentProgram,
-                ParentNames = parentNames,
             };
 
             return new StudentProfileResult { StudentProfile = studentProfile };
         }
 
         // čisti tekst - uklanja razmake i specijalne znakove, ostavlja samo slova, brojke i hrvatska slova
-        // tekst kako piše (crtice i apostrofi u imenima ostaju), jedan razmak
-        private static string Plain(string? text) =>
-            Regex.Replace(HtmlEntity.DeEntitize(text ?? ""), "\\s+", " ").Trim();
-
         private string CleanText(string text)
         {
             text = text.Trim();
