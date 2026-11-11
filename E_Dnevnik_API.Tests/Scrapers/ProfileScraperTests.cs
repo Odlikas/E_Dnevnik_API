@@ -22,15 +22,16 @@ public class ProfileScraperTests
               <div class="classmaster"><span>Razrednik</span><span>Marko Matic</span></div>
             </div>
           </div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"></div>
-          <div class="l-two-columns"><span class="column">Tehnicar za racunalstvo</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Redni broj</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Ime</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Prezime</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">OIB</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Datum rođenja</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Mjesto rođenja</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Adresa</span><span class="column">x</span></div>
+          <div class="l-two-columns"><span class="column bold t-right">Program</span><span class="column">Tehnicar za racunalstvo<br></span></div>
+          <!-- e-Dnevnik puts the parent's name right after Program: it must not be read as the programme -->
+          <div class="l-two-columns"><span class="column bold t-right">Ime i prezime</span><span class="column">Ana Matic</span></div>
         </div>
         </body></html>
         """;
