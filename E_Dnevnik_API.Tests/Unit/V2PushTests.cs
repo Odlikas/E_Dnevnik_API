@@ -77,6 +77,19 @@ public class V2PushTests
     }
 
     [Fact]
+    public void PhoneSilentGoesOnlyToThatParentWithoutNamesByDefault()
+    {
+        var silent = Grade(type: PushPlanner.PhoneSilent, note: null, element: null, parent: Mama);
+        var plan = PushPlanner.Plan(new[] { silent }, All, details: false);
+        Assert.Equal(new[] { "mama-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Mobitel se ne javlja", plan[0].Title);
+        Assert.DoesNotContain("Ema", plan[0].Body);
+        Assert.Equal("phone_silent", plan[0].Data["type"]);
+        var detailed = PushPlanner.Plan(new[] { silent }, All, details: true);
+        Assert.Equal("Mobitel (Ema) se ne javlja", detailed[0].Title);
+    }
+
+    [Fact]
     public void TimeAddedGoesOnlyToTheKidPhone()
     {
         var added = Grade(type: PushPlanner.TimeAdded, subject: null!, value: 30, note: null, element: null);
