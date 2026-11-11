@@ -26,9 +26,13 @@ namespace E_Dnevnik_API.V2.Push
         // samo djetetu. Odobrenje stiže kao time_added.
         public const string TimeDeclined = "time_declined";
 
+        // djetetov mobitel se 24 h nije javio (device_live.reported_at; pg_cron notify-silent-phones,
+        // D313 u aplikaciji); jedan red po roditelju s tamper_alerts, samo roditeljima
+        public const string PhoneSilent = "phone_silent";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
         public static readonly IReadOnlyCollection<string> KnownTypes =
-            new[] { NewGrade, HelpRequest, Tamper, TimeAdded, TimeRequest, TimeDeclined };
+            new[] { NewGrade, HelpRequest, Tamper, TimeAdded, TimeRequest, TimeDeclined, PhoneSilent };
 
         // tipovi koje dobiva i dijete na svom mobitelu (uz roditelje)
         private static readonly HashSet<string> KidTypes = new() { NewGrade, TimeAdded, TimeDeclined };
@@ -144,6 +148,13 @@ namespace E_Dnevnik_API.V2.Push
                 var child = details ? rows[0].ChildFirstName?.Trim() : null;
                 return (string.IsNullOrEmpty(child) ? "Odlikaš je isključen" : "Odlikaš je isključen na mobitelu (" + child + ")",
                     "Dopuštenje na djetetovom mobitelu je isključeno. Otvorite Odlikaš.");
+            }
+            if (rows[0].Type == PhoneSilent)
+            {
+                // F10: bez imena dok details nije uključen
+                var child = details ? rows[0].ChildFirstName?.Trim() : null;
+                return (string.IsNullOrEmpty(child) ? "Mobitel se ne javlja" : "Mobitel (" + child + ") se ne javlja",
+                    "Djetetov mobitel nije bio na vezi više od 24 sata. Otvorite Odlikaš.");
             }
             var count = rows.Count;
             if (!details)
