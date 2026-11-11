@@ -1,4 +1,4 @@
-namespace E_Dnevnik_API.Models.ScrapeStudentProfile
+﻿namespace E_Dnevnik_API.Models.ScrapeStudentProfile
 {
     public class StudentProfileInfo
     {
@@ -12,8 +12,5 @@ namespace E_Dnevnik_API.Models.ScrapeStudentProfile
         public string? StudentName { get; set; }
         public string? ClassMaster { get; set; }
         public string? StudentProgram { get; set; }
-
-        // "Ime i prezime" roditelja/skrbnika (redci nakon "Program"), najviše dva, redom s e-Dnevnika
-        public List<string> ParentNames { get; set; } = new();
     }
 }

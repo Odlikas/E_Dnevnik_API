@@ -14,8 +14,7 @@ namespace E_Dnevnik_API.V2.Identity
         string? ClassRaw,
         string? Program,
         DateOnly? BirthDate,
-        string? Username,
-        IReadOnlyList<string>? ParentNames = null
+        string? Username
     )
     {
         public string FirstName => FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
@@ -73,8 +72,7 @@ namespace E_Dnevnik_API.V2.Identity
                 OrNull(p.StudentClassRaw),
                 OrNull(p.StudentProgram),
                 birth,
-                user?.Value.ToLowerInvariant(),
-                p.ParentNames
+                user?.Value.ToLowerInvariant()
             );
         }
 

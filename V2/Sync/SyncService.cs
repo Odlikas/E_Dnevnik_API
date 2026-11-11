@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 
 namespace E_Dnevnik_API.V2.Sync
 {
@@ -134,8 +134,7 @@ namespace E_Dnevnik_API.V2.Sync
                         plan.Response.School,
                         plan.Response.ClassName,
                         plan.Timetable,
-                        today,
-                        snapshot.Profile?.ParentNames
+                        today
                     ),
                     ct
                 );
