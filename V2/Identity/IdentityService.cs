@@ -286,6 +286,7 @@ namespace E_Dnevnik_API.V2.Identity
                     School = synced?.School ?? profile.School,
                     ClassName = profile.ClassRaw,
                     Program = profile.Program,
+                    ParentNames = profile.ParentNames?.ToList() ?? new(),
                     SubjectCount = synced?.SubjectCount ?? 0,
                     BirthDate = profile.BirthDate?.ToString("yyyy-MM-dd"),
                     NeedsParentConsent = bound.NeedsParentConsent,

@@ -20,6 +20,9 @@ namespace E_Dnevnik_API.V2.Identity
         public string? School { get; set; }
         public string? ClassName { get; set; }
         public string? Program { get; set; }
+
+        // roditelji kako ih e-Dnevnik piše ("Ana Anić"), najviše dva
+        public List<string> ParentNames { get; set; } = new();
         public int SubjectCount { get; set; }
 
         // yyyy-MM-dd ili null kad ga profil ne pokazuje

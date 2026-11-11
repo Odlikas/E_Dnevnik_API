@@ -233,6 +233,7 @@ public class V2IdentityTests
         Assert.Equal("Ivan Marić", r.FullName);
         Assert.Equal("1.b", r.ClassName);
         Assert.Equal("opća gimnazija", r.Program);
+        Assert.Equal(new[] { "Roditelj Anić" }, r.ParentNames);
         Assert.Equal(14, r.SubjectCount);
         Assert.Equal("2011-03-14", r.BirthDate);
         Assert.True(r.NeedsParentConsent);
