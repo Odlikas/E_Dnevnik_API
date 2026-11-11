@@ -51,5 +51,7 @@ public class ProfileScraperTests
         Assert.Equal("2025/2026", result.StudentProfile.StudentSchoolYear);
         Assert.Equal("Zagreb", result.StudentProfile.StudentSchoolCity);
         Assert.Equal("Tehnicar za racunalstvo", result.StudentProfile.StudentProgram);
+        // the row after Program is a parent, not the programme (D317); its name is kept (D318)
+        Assert.Equal(new[] { "Ana Matic" }, result.StudentProfile.ParentNames);
     }
 }

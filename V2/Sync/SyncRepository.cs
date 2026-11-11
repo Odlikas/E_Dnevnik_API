@@ -25,7 +25,9 @@ namespace E_Dnevnik_API.V2.Sync
         string? ClassName = null,
         // null: raspored nije skinut ni prepoznat, postojeći ostaje; prazno: e-Dnevnik nema rasporeda
         List<TimetableRow>? Timetable = null,
-        DateOnly? TimetableFrom = null
+        DateOnly? TimetableFrom = null,
+        // null: profil nije pročitan, postojeći ostaju
+        List<string>? ParentNames = null
     );
 
     public interface ISyncRepository
@@ -259,6 +261,19 @@ namespace E_Dnevnik_API.V2.Sync
 
             await FinishRunAsync(conn, tx, w.RunId, "ok", inserted, null, ct);
             await tx.CommitAsync(ct);
+
+            // imena roditelja izvan transakcije: ako baza još nema funkciju (migracija D318), sync ipak uspije
+            if (w.ParentNames != null)
+            {
+                try
+                {
+                    await using var cmd = new NpgsqlCommand("select public.ednevnik_set_child_parents($1, $2)", conn);
+                    cmd.Parameters.Add(new NpgsqlParameter { Value = w.ChildId });
+                    cmd.Parameters.Add(new NpgsqlParameter { Value = w.ParentNames.ToArray(), NpgsqlDbType = NpgsqlDbType.Array | NpgsqlDbType.Text });
+                    await cmd.ExecuteNonQueryAsync(ct);
+                }
+                catch (PostgresException) { }
+            }
             return inserted;
         }
 
