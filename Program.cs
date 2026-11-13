@@ -199,6 +199,9 @@ builder.Services.AddScoped<E_Dnevnik_API.V2.Identity.IIdentityService, E_Dnevnik
 builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.IPushRepository, E_Dnevnik_API.V2.Push.PushRepository>();
 builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.IPushSender, E_Dnevnik_API.V2.Push.FcmPushSender>();
 builder.Services.AddHostedService<E_Dnevnik_API.V2.Push.PushWorker>();
+// tihi 'kid_sync' push djetetovu mobitelu čim roditelj nešto promijeni (public.device_sync_signals, T9)
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.ISyncSignalRepository, E_Dnevnik_API.V2.Push.SyncSignalRepository>();
+builder.Services.AddHostedService<E_Dnevnik_API.V2.Push.SyncSignalWorker>();
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
