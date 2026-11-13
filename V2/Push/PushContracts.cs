@@ -32,7 +32,9 @@ namespace E_Dnevnik_API.V2.Push
         string Title,
         string Body,
         IReadOnlyDictionary<string, string> Data,
-        IReadOnlyList<Guid> Notifications
+        IReadOnlyList<Guid> Notifications,
+        // samo podaci, bez obavijesti: mobitel ga ne prikaže, samo povuče stanje (kid_sync, T9)
+        bool Silent = false
     );
 
     public enum SendStatus
@@ -51,6 +53,20 @@ namespace E_Dnevnik_API.V2.Push
     }
 
     public record SendResult(string Token, SendStatus Status);
+
+    // djetetov mobitel koji treba odmah povući stanje blokiranja (public.device_sync_signals, T9)
+    public record SyncSignal(Guid DeviceId, string Reason, string? Token, bool Revoked);
+
+    public interface ISyncSignalRepository
+    {
+        bool IsConfigured { get; }
+
+        // označi sent_at na dospjelim redovima i vrati ih (najviše jednom; izgubljeni push pokrije
+        // mobitelovo povlačenje svake 2 min)
+        Task<IReadOnlyList<SyncSignal>> TakeDueAsync(int limit, CancellationToken ct);
+
+        Task ClearDeviceTokensAsync(IReadOnlyCollection<string> tokens, CancellationToken ct);
+    }
 
     // zaključani redovi (for update skip locked) dok traje slanje; Dispose bez Complete = rollback
     public interface IPushClaim : IAsyncDisposable

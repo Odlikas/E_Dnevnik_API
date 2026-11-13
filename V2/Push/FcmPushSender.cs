@@ -77,13 +77,33 @@ namespace E_Dnevnik_API.V2.Push
         }
 
         public static Message ToMessage(OutgoingPush p) =>
-            new()
+            p.Silent ? ToDataMessage(p) : new()
             {
                 Token = p.Token,
                 Notification = new Notification { Title = p.Title, Body = p.Body },
                 Data = p.Data,
                 Android = new AndroidConfig { Priority = Priority.High },
                 Apns = new ApnsConfig { Aps = new Aps { Sound = "default" } },
+            };
+
+        // kid_sync (T9): samo podaci, visoki prioritet da probudi mobitel; stari se ne isporučuje nakon
+        // 10 min, a više čekajućih spoji se u jedan (collapse key); na iPhoneu tihi background push
+        public static Message ToDataMessage(OutgoingPush p) =>
+            new()
+            {
+                Token = p.Token,
+                Data = p.Data,
+                Android = new AndroidConfig
+                {
+                    Priority = Priority.High,
+                    TimeToLive = TimeSpan.FromMinutes(10),
+                    CollapseKey = p.Data["type"],
+                },
+                Apns = new ApnsConfig
+                {
+                    Headers = new Dictionary<string, string> { ["apns-push-type"] = "background", ["apns-priority"] = "5" },
+                    Aps = new Aps { ContentAvailable = true },
+                },
             };
 
         // Unregistered / SenderIdMismatch / "nije valjan token" = token više ne vrijedi
