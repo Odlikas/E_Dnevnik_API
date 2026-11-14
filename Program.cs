@@ -238,6 +238,22 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+// CarnetGuard: kill switch, globalni limit i circuit breaker za sve zahtjeve prema ocjene.skole.hr
+// postavke iz sekcije "Carnet" (env Carnet__Enabled=false + restart = nijedan zahtjev prema CARNET-u)
+var carnetOptions = app.Configuration.GetSection("Carnet").Get<CarnetGuardOptions>() ?? new CarnetGuardOptions();
+var carnetLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<CarnetGuard>();
+CarnetGuard.UseShared(new CarnetGuard(carnetOptions, TimeProvider.System, CarnetRequestStats.Shared, carnetLogger));
+if (!carnetOptions.Enabled)
+    carnetLogger.LogWarning("[CARNET] kill switch uključen: nijedan zahtjev ne ide prema e-Dnevniku.");
+else
+    carnetLogger.LogInformation(
+        "[CARNET] guard: najviše {Rps} zahtjeva/s, breaker {Threshold} grešaka u {Window} s, pauza {Pause} min.",
+        carnetOptions.MaxRequestsPerSecond,
+        carnetOptions.FailureThreshold,
+        carnetOptions.FailureWindow.TotalSeconds,
+        carnetOptions.Pause.TotalMinutes
+    );
+
 // auto-migrate on startup — simpler than manual heroku run for this setup
 using (var scope = app.Services.CreateScope())
 {

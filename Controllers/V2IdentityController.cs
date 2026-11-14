@@ -88,6 +88,7 @@ namespace E_Dnevnik_API.Controllers
                 IdentityOutcomeKind.NotHighSchool => Error(HttpStatusCode.UnprocessableEntity, IdentityErrorCodes.NotHighSchool),
                 IdentityOutcomeKind.Mismatch => Error(HttpStatusCode.Forbidden, IdentityErrorCodes.IdentityMismatch),
                 IdentityOutcomeKind.AlreadyBound => Error(HttpStatusCode.Conflict, IdentityErrorCodes.AlreadyBound),
+                IdentityOutcomeKind.CarnetPaused => Paused(outcome.RetryAfter),
                 _ => Error(HttpStatusCode.BadGateway, SyncErrorCodes.Unavailable),
             };
         }
@@ -102,6 +103,12 @@ namespace E_Dnevnik_API.Controllers
                 && c.Value != null
                 && c.Value.Length <= MaxCookieLength
             );
+
+        private ObjectResult Paused(TimeSpan? retryAfter)
+        {
+            Response.Headers.RetryAfter = V2SyncController.RetryAfterSeconds(retryAfter).ToString();
+            return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.CarnetPaused);
+        }
 
         private ObjectResult Error(HttpStatusCode status, string code) =>
             StatusCode((int)status, new SyncError { Error = code });

@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using E_Dnevnik_API.ScrapingServices;
 
 namespace E_Dnevnik_API.V2.Sync
 {
@@ -8,9 +9,10 @@ namespace E_Dnevnik_API.V2.Sync
         Forbidden,
         SessionInvalid,
         Unavailable,
+        CarnetPaused,
     }
 
-    public record SyncOutcome(SyncOutcomeKind Kind, SyncResponse? Response = null);
+    public record SyncOutcome(SyncOutcomeKind Kind, SyncResponse? Response = null, TimeSpan? RetryAfter = null);
 
     public interface ISyncService
     {
@@ -113,6 +115,11 @@ namespace E_Dnevnik_API.V2.Sync
             {
                 await _repo.FinishRunAsync(runId, "failed", 0, SyncErrorCodes.Unavailable, CancellationToken.None);
                 return new SyncOutcome(SyncOutcomeKind.Unavailable);
+            }
+            catch (CarnetPausedException ex)
+            {
+                await _repo.FinishRunAsync(runId, "failed", 0, SyncErrorCodes.CarnetPaused, CancellationToken.None);
+                return new SyncOutcome(SyncOutcomeKind.CarnetPaused, RetryAfter: ex.RetryAfter);
             }
 
             try

@@ -86,6 +86,7 @@ namespace E_Dnevnik_API.Controllers
                 SyncOutcomeKind.Ok => Ok(outcome.Response),
                 SyncOutcomeKind.Forbidden => Error(HttpStatusCode.Forbidden, SyncErrorCodes.Forbidden),
                 SyncOutcomeKind.SessionInvalid => Error(HttpStatusCode.UnprocessableEntity, SyncErrorCodes.SessionInvalid),
+                SyncOutcomeKind.CarnetPaused => Paused(outcome.RetryAfter),
                 _ => Error(HttpStatusCode.BadGateway, SyncErrorCodes.Unavailable),
             };
         }
@@ -101,6 +102,15 @@ namespace E_Dnevnik_API.Controllers
                 && c.Value != null
                 && c.Value.Length <= MaxCookieLength
             );
+
+        private ObjectResult Paused(TimeSpan? retryAfter)
+        {
+            Response.Headers.RetryAfter = RetryAfterSeconds(retryAfter).ToString();
+            return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.CarnetPaused);
+        }
+
+        public static int RetryAfterSeconds(TimeSpan? retryAfter) =>
+            Math.Max(1, (int)Math.Ceiling((retryAfter ?? TimeSpan.FromMinutes(1)).TotalSeconds));
 
         private ObjectResult Error(HttpStatusCode status, string code) =>
             StatusCode((int)status, new SyncError { Error = code });

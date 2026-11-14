@@ -49,6 +49,11 @@ namespace E_Dnevnik_API.V2.Identity
             {
                 throw;
             }
+            catch (CarnetPausedException)
+            {
+                // guard nije pustio zahtjev; pozivatelj vraća 503 + Retry-After
+                throw;
+            }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;
@@ -140,9 +145,10 @@ namespace E_Dnevnik_API.V2.Identity
         Mismatch,
         AlreadyBound,
         BadRequest,
+        CarnetPaused,
     }
 
-    public record IdentityOutcome(IdentityOutcomeKind Kind, IdentityResponse? Response = null);
+    public record IdentityOutcome(IdentityOutcomeKind Kind, IdentityResponse? Response = null, TimeSpan? RetryAfter = null);
 
     public interface IIdentityService
     {
@@ -208,6 +214,10 @@ namespace E_Dnevnik_API.V2.Identity
             catch (EdnevnikUnavailableException)
             {
                 return new IdentityOutcome(IdentityOutcomeKind.Unavailable);
+            }
+            catch (CarnetPausedException ex)
+            {
+                return new IdentityOutcome(IdentityOutcomeKind.CarnetPaused, RetryAfter: ex.RetryAfter);
             }
 
             var profile = IdentityRules.ParseProfile(html);

@@ -51,7 +51,17 @@ namespace E_Dnevnik_API.Controllers
                 );
             }
 
-            var result = await EduHrLoginService.LoginAsync(request.Email, request.Password);
+            LoginResult result;
+            try
+            {
+                result = await EduHrLoginService.LoginAsync(request.Email, request.Password);
+            }
+            catch (CarnetPausedException ex)
+            {
+                // nije neuspjela prijava korisnika - ne broji se u brute force
+                Response.Headers.RetryAfter = ex.RetryAfterSeconds.ToString();
+                return StatusCode(ex.StatusCode, ex.Message);
+            }
 
             if (result.Client is null)
             {

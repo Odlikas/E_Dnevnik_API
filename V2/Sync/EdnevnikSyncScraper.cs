@@ -157,6 +157,11 @@ namespace E_Dnevnik_API.V2.Sync
             {
                 throw;
             }
+            catch (CarnetPausedException)
+            {
+                // guard nije pustio zahtjev; pozivatelj vraća 503 + Retry-After
+                throw;
+            }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
                 throw;

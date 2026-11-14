@@ -48,6 +48,9 @@ namespace E_Dnevnik_API.V2.Sync
         public const string NotConfigured = "not_configured";
         public const string AuthUnavailable = "auth_unavailable";
         public const string Internal = "internal";
+
+        // CarnetGuard: kill switch, breaker ili predug red; odgovor nosi Retry-After
+        public const string CarnetPaused = "carnet_paused";
     }
 
     // e-Dnevnik nas je vratio na /login - kolačić je mrtav

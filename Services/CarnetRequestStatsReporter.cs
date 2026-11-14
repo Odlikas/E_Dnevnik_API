@@ -53,7 +53,8 @@ namespace E_Dnevnik_API.Services
             _logger.LogInformation(
                 "[CARNET] {Kind} sažetak od {PeriodStart:u} do {PeriodEnd:u}: ukupno {Total} zahtjeva "
                     + "(login {Login}, korisnički {UserScrape}, pozadinski {Background}), "
-                    + "cache hitova {CacheHits}, korisnika {UniqueUsers}, zahtjeva po korisniku {PerUser:F1}",
+                    + "cache hitova {CacheHits}, korisnika {UniqueUsers}, zahtjeva po korisniku {PerUser:F1}; "
+                    + "guard: odbijeno {Blocked}, čekalo u redu {Throttled}, pauza breakera {BreakerOpens}",
                 kind,
                 periodStart,
                 _periodStartUtc,
@@ -63,7 +64,10 @@ namespace E_Dnevnik_API.Services
                 s.Background,
                 s.CacheHits,
                 s.UniqueUsers,
-                s.RequestsPerUser
+                s.RequestsPerUser,
+                s.Blocked,
+                s.Throttled,
+                s.BreakerOpens
             );
         }
 
