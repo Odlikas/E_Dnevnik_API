@@ -83,7 +83,7 @@ public class V2IdentityTests
         public SyncOutcome Outcome = new(SyncOutcomeKind.Ok, new SyncResponse { SubjectCount = 14, School = "Gimnazija Pula" });
         public Guid? SyncedChild;
 
-        public Task<SyncOutcome> SyncAsync(Guid callerId, Guid childId, IReadOnlyList<SyncCookie> cookies, CancellationToken ct)
+        public Task<SyncOutcome> SyncAsync(Guid callerId, Guid childId, IReadOnlyList<SyncCookie> cookies, CancellationToken ct, bool full = false)
         {
             SyncedChild = childId;
             return Task.FromResult(Outcome);

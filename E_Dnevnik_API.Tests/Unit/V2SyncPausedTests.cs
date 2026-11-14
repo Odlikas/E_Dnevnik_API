@@ -24,6 +24,15 @@ public class V2SyncPausedTests
 
         public Task<List<SubjectRow>> GetSubjectsAsync(CancellationToken ct) => Task.FromResult(new List<SubjectRow>());
 
+        public Task<Dictionary<string, SubjectFetchState>> GetFetchStateAsync(Guid childId, string schoolYear, CancellationToken ct) =>
+            Task.FromResult(new Dictionary<string, SubjectFetchState>());
+
+        public Task<Dictionary<short, List<short>>> GetGradeValuesAsync(Guid childId, SchoolYear year, CancellationToken ct) =>
+            Task.FromResult(new Dictionary<short, List<short>>());
+
+        public Task<DateTimeOffset?> LastScheduleFetchAsync(Guid childId, CancellationToken ct) =>
+            Task.FromResult<DateTimeOffset?>(null);
+
         public Task<short> EdnevnikSubjectIdAsync(string ednevnikName, CancellationToken ct) =>
             throw new NotSupportedException();
 
@@ -41,7 +50,12 @@ public class V2SyncPausedTests
 
     private class PausedScraper : IEdnevnikSyncScraper
     {
-        public Task<EdnevnikSnapshot> ScrapeAsync(IReadOnlyList<SyncCookie> cookies, string userKey, CancellationToken ct) =>
+        public Task<EdnevnikSnapshot> ScrapeAsync(
+            IReadOnlyList<SyncCookie> cookies,
+            string userKey,
+            SyncFetchOptions options,
+            CancellationToken ct
+        ) =>
             throw new CarnetPausedException(CarnetPauseReason.CircuitOpen, TimeSpan.FromMinutes(4));
     }
 

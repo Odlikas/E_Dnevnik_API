@@ -80,7 +80,7 @@ namespace E_Dnevnik_API.Controllers
                 return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
             }
 
-            var outcome = await _sync.SyncAsync(callerId.Value, body.ChildId!.Value, body.Cookies!, ct);
+            var outcome = await _sync.SyncAsync(callerId.Value, body.ChildId!.Value, body.Cookies!, ct, body.Full == true);
             return outcome.Kind switch
             {
                 SyncOutcomeKind.Ok => Ok(outcome.Response),

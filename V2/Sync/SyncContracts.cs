@@ -7,6 +7,9 @@ namespace E_Dnevnik_API.V2.Sync
     {
         public Guid? ChildId { get; set; }
         public List<SyncCookie>? Cookies { get; set; }
+
+        // true = skini sve stranice ocjena i raspored (npr. ručno osvježavanje); inače samo promijenjeno
+        public bool? Full { get; set; }
     }
 
     public class SyncCookie

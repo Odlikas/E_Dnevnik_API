@@ -9,18 +9,25 @@ namespace E_Dnevnik_API.V2.Sync
     // GradeHtml: sirova stranica /grade/{id}, parsira je GradePageParser
     public record ScrapedSubject(SubjectInfo Info, string? GradeHtml);
 
-    // ScheduleHtml: sirova stranica /schedule (SchedulePageParser), null kad je nismo uspjeli skinuti
+    // GradeHtml null: sat razrednika ili stranica ovaj put nije skinuta (inkrementalni sync)
+    // ScheduleHtml: sirova stranica /schedule (SchedulePageParser), null kad je nismo skinuli ili nije uspjelo
     public record EdnevnikSnapshot(
         StudentProfileInfo? Profile,
         List<ScrapedSubject> Subjects,
         List<TestInfo> Tests,
-        string? ScheduleHtml = null
+        string? ScheduleHtml = null,
+        int CarnetRequests = 0
     );
 
     public interface IEdnevnikSyncScraper
     {
         // baca EdnevnikSessionInvalidException ili EdnevnikUnavailableException
-        Task<EdnevnikSnapshot> ScrapeAsync(IReadOnlyList<SyncCookie> cookies, string userKey, CancellationToken ct);
+        Task<EdnevnikSnapshot> ScrapeAsync(
+            IReadOnlyList<SyncCookie> cookies,
+            string userKey,
+            SyncFetchOptions options,
+            CancellationToken ct
+        );
     }
 
     // vrti postojeće scrapere s kolačićima s mobitela; stranice ocjena skida sam (sirovi HTML)
@@ -106,15 +113,17 @@ namespace E_Dnevnik_API.V2.Sync
         public async Task<EdnevnikSnapshot> ScrapeAsync(
             IReadOnlyList<SyncCookie> cookies,
             string userKey,
+            SyncFetchOptions options,
             CancellationToken ct
         )
         {
+            var session = new EdnevnikSessionHandler(_time);
             using var client = CarnetHttp.CreateClient(
                 BuildCookies(cookies),
                 CarnetRequestSource.UserScrape,
                 userKey,
                 RequestTimeout,
-                outerHandler: new EdnevnikSessionHandler(_time)
+                outerHandler: session
             );
 
             try
@@ -122,6 +131,7 @@ namespace E_Dnevnik_API.V2.Sync
                 // prvo profil: najlakša stranica, a odmah otkriva mrtav kolačić
                 var profile = (await _profile.ScrapeStudentProfile(client)).StudentProfile;
                 var list = (await _subjects.ScrapeSubjects(client)).Subjects ?? new();
+                var pick = options.PickGradePages(list);
 
                 var subjects = new List<ScrapedSubject>();
                 foreach (var info in list)
@@ -131,6 +141,12 @@ namespace E_Dnevnik_API.V2.Sync
                         continue;
                     // sat razrednika nema ocjena, ne trošimo zahtjev
                     if (SubjectMapper.IsHomeroom(info.SubjectName))
+                    {
+                        subjects.Add(new ScrapedSubject(info, null));
+                        continue;
+                    }
+                    // prosjek se nije promijenio i nije na redu za osvježavanje: stranicu ne skidamo
+                    if (!pick.Contains(info.SubjectId))
                     {
                         subjects.Add(new ScrapedSubject(info, null));
                         continue;
@@ -149,9 +165,9 @@ namespace E_Dnevnik_API.V2.Sync
                     tests = new List<TestInfo>();
                 }
 
-                var schedule = await FetchSchedulePageAsync(client, userKey, ct);
+                var schedule = options.FetchSchedule ? await FetchSchedulePageAsync(client, userKey, ct) : null;
 
-                return new EdnevnikSnapshot(profile, subjects, tests, schedule);
+                return new EdnevnikSnapshot(profile, subjects, tests, schedule, session.Requests);
             }
             catch (EdnevnikSessionInvalidException)
             {
