@@ -8,7 +8,11 @@ namespace E_Dnevnik_API.ScrapingServices
         long UserScrape,
         long Background,
         long CacheHits,
-        int UniqueUsers
+        int UniqueUsers,
+        // CarnetGuard: odbijeni (kill switch / breaker / predug red), zadržani u redu, otvaranja breakera
+        long Blocked = 0,
+        long Throttled = 0,
+        long BreakerOpens = 0
     )
     {
         public long Total => Login + UserScrape + Background;
@@ -26,8 +30,29 @@ namespace E_Dnevnik_API.ScrapingServices
         private long _login,
             _userScrape,
             _background,
-            _cacheHits;
+            _cacheHits,
+            _blocked,
+            _throttled,
+            _breakerOpens;
         private HashSet<string> _users = new();
+
+        public void RecordBlocked()
+        {
+            lock (_lock)
+                _blocked++;
+        }
+
+        public void RecordThrottled()
+        {
+            lock (_lock)
+                _throttled++;
+        }
+
+        public void RecordBreakerOpen()
+        {
+            lock (_lock)
+                _breakerOpens++;
+        }
 
         public void RecordRequest(CarnetRequestSource source, string? userKey)
         {
@@ -66,7 +91,10 @@ namespace E_Dnevnik_API.ScrapingServices
                     _userScrape,
                     _background,
                     _cacheHits,
-                    _users.Count
+                    _users.Count,
+                    _blocked,
+                    _throttled,
+                    _breakerOpens
                 );
         }
 
@@ -77,6 +105,7 @@ namespace E_Dnevnik_API.ScrapingServices
             {
                 var snapshot = Snapshot();
                 _login = _userScrape = _background = _cacheHits = 0;
+                _blocked = _throttled = _breakerOpens = 0;
                 _users = new HashSet<string>();
                 return snapshot;
             }

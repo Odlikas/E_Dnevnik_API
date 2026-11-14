@@ -5,7 +5,15 @@ namespace E_Dnevnik_API.V2.Sync
 {
     public record ChildRecord(Guid Id, Guid FamilyId, Guid? AuthUserId, bool SelfManaged);
 
-    public record ChildSubjectRow(short SubjectId, string? EdnevnikRef, string? TeacherName);
+    // Average: prosjek s popisa predmeta; GradesFetched: stranica ocjena skinuta u ovom syncu
+    // (samo tada se pamte prosjek i vrijeme, inače bi se promjena propustila)
+    public record ChildSubjectRow(
+        short SubjectId,
+        string? EdnevnikRef,
+        string? TeacherName,
+        string? Average = null,
+        bool GradesFetched = true
+    );
 
     public record CalendarTestRow(short? SubjectId, string Title, DateOnly EventDate);
 
@@ -25,7 +33,9 @@ namespace E_Dnevnik_API.V2.Sync
         string? ClassName = null,
         // null: raspored nije skinut ni prepoznat, postojeći ostaje; prazno: e-Dnevnik nema rasporeda
         List<TimetableRow>? Timetable = null,
-        DateOnly? TimetableFrom = null
+        DateOnly? TimetableFrom = null,
+        // koliko je zahtjeva ovaj sync poslao CARNET-u (sync_runs.carnet_requests)
+        int? CarnetRequests = null
     );
 
     public interface ISyncRepository
@@ -34,6 +44,15 @@ namespace E_Dnevnik_API.V2.Sync
         Task<ChildRecord?> GetChildAsync(Guid childId, CancellationToken ct);
         Task<bool> IsParentInFamilyAsync(Guid userId, Guid familyId, CancellationToken ct);
         Task<List<SubjectRow>> GetSubjectsAsync(CancellationToken ct);
+
+        // inkrementalni sync: zadnji viđeni prosjek i vrijeme po e-Dnevnik id-u predmeta
+        Task<Dictionary<string, SubjectFetchState>> GetFetchStateAsync(Guid childId, string schoolYear, CancellationToken ct);
+
+        // već upisane ocjene ove školske godine po predmetu (za prosjek predmeta koji nisu skinuti)
+        Task<Dictionary<short, List<short>>> GetGradeValuesAsync(Guid childId, SchoolYear year, CancellationToken ct);
+
+        // kad je raspored zadnji put uspješno skinut
+        Task<DateTimeOffset?> LastScheduleFetchAsync(Guid childId, CancellationToken ct);
 
         // public.ednevnik_subject_id: subjects.id za ime iz e-Dnevnika, stvara predmet ako ga nema
         Task<short> EdnevnikSubjectIdAsync(string ednevnikName, CancellationToken ct);
@@ -94,6 +113,64 @@ namespace E_Dnevnik_API.V2.Sync
             return list;
         }
 
+        public async Task<Dictionary<string, SubjectFetchState>> GetFetchStateAsync(
+            Guid childId,
+            string schoolYear,
+            CancellationToken ct
+        )
+        {
+            await using var cmd = Db.CreateCommand(
+                "select ednevnik_ref, ednevnik_average, grades_fetched_at from public.child_subjects "
+                    + "where child_id = $1 and school_year = $2 and ednevnik_ref is not null"
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = childId });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = schoolYear });
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            var state = new Dictionary<string, SubjectFetchState>();
+            while (await r.ReadAsync(ct))
+                state[r.GetString(0)] = new SubjectFetchState(
+                    r.IsDBNull(1) ? null : r.GetString(1),
+                    r.IsDBNull(2) ? null : r.GetFieldValue<DateTimeOffset>(2)
+                );
+            return state;
+        }
+
+        public async Task<Dictionary<short, List<short>>> GetGradeValuesAsync(
+            Guid childId,
+            SchoolYear year,
+            CancellationToken ct
+        )
+        {
+            await using var cmd = Db.CreateCommand(
+                "select subject_id, value from public.grades where child_id = $1 and graded_on between $2 and $3"
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = childId });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = year.FirstDay });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = year.LastDay });
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            var values = new Dictionary<short, List<short>>();
+            while (await r.ReadAsync(ct))
+            {
+                var subject = r.GetInt16(0);
+                if (!values.TryGetValue(subject, out var list))
+                    values[subject] = list = new List<short>();
+                list.Add(r.GetInt16(1));
+            }
+            return values;
+        }
+
+        public async Task<DateTimeOffset?> LastScheduleFetchAsync(Guid childId, CancellationToken ct)
+        {
+            await using var cmd = Db.CreateCommand(
+                "select max(started_at) from public.sync_runs "
+                    + "where child_id = $1 and status = 'ok' and schedule_fetched"
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = childId });
+            var result = await cmd.ExecuteScalarAsync(ct);
+            return result is DateTime dt ? new DateTimeOffset(DateTime.SpecifyKind(dt, DateTimeKind.Utc))
+                : result as DateTimeOffset?;
+        }
+
         public async Task<short> EdnevnikSubjectIdAsync(string ednevnikName, CancellationToken ct)
         {
             await using var cmd = Db.CreateCommand("select public.ednevnik_subject_id($1)");
@@ -146,16 +223,19 @@ namespace E_Dnevnik_API.V2.Sync
                 await first.ExecuteNonQueryAsync(ct);
             }
 
-            // child_subjects: followed se nikad ne dira
+            // child_subjects: followed se nikad ne dira; prosjek i vrijeme samo kad je stranica skinuta
             foreach (var cs in w.ChildSubjects)
             {
                 await using var cmd = new NpgsqlCommand(
                     "insert into public.child_subjects "
-                        + "(child_id, family_id, subject_id, school_year, ednevnik_ref, teacher_name) "
-                        + "values ($1, $2, $3, $4, $5, $6) "
+                        + "(child_id, family_id, subject_id, school_year, ednevnik_ref, teacher_name, "
+                        + "ednevnik_average, grades_fetched_at) "
+                        + "values ($1, $2, $3, $4, $5, $6, case when $8 then $7 end, case when $8 then now() end) "
                         + "on conflict (child_id, subject_id, school_year) do update set "
                         + "family_id = excluded.family_id, ednevnik_ref = excluded.ednevnik_ref, "
-                        + "teacher_name = excluded.teacher_name",
+                        + "teacher_name = excluded.teacher_name, "
+                        + "ednevnik_average = case when $8 then $7 else child_subjects.ednevnik_average end, "
+                        + "grades_fetched_at = case when $8 then now() else child_subjects.grades_fetched_at end",
                     conn,
                     tx
                 );
@@ -165,6 +245,8 @@ namespace E_Dnevnik_API.V2.Sync
                 cmd.Parameters.Add(new NpgsqlParameter { Value = w.Year.Label });
                 cmd.Parameters.Add(Text(cs.EdnevnikRef));
                 cmd.Parameters.Add(Text(cs.TeacherName));
+                cmd.Parameters.Add(Text(cs.Average));
+                cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Boolean, Value = cs.GradesFetched });
                 await cmd.ExecuteNonQueryAsync(ct);
             }
 
@@ -257,7 +339,7 @@ namespace E_Dnevnik_API.V2.Sync
                 }
             }
 
-            await FinishRunAsync(conn, tx, w.RunId, "ok", inserted, null, ct);
+            await FinishRunAsync(conn, tx, w.RunId, "ok", inserted, null, ct, w.CarnetRequests, w.Timetable != null);
             await tx.CommitAsync(ct);
             return inserted;
         }
@@ -281,12 +363,14 @@ namespace E_Dnevnik_API.V2.Sync
             string status,
             int changed,
             string? errorCode,
-            CancellationToken ct
+            CancellationToken ct,
+            int? carnetRequests = null,
+            bool scheduleFetched = false
         )
         {
             await using var cmd = new NpgsqlCommand(
                 "update public.sync_runs set finished_at = now(), status = $2::public.sync_status, "
-                    + "changed = $3, error_code = $4 where id = $1",
+                    + "changed = $3, error_code = $4, carnet_requests = $5, schedule_fetched = $6 where id = $1",
                 conn,
                 tx
             );
@@ -294,6 +378,12 @@ namespace E_Dnevnik_API.V2.Sync
             cmd.Parameters.Add(new NpgsqlParameter { Value = status });
             cmd.Parameters.Add(new NpgsqlParameter { Value = changed });
             cmd.Parameters.Add(Text(errorCode));
+            cmd.Parameters.Add(new NpgsqlParameter
+            {
+                NpgsqlDbType = NpgsqlDbType.Smallint,
+                Value = carnetRequests is { } n ? (short)Math.Min(n, short.MaxValue) : DBNull.Value,
+            });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Boolean, Value = scheduleFetched });
             await cmd.ExecuteNonQueryAsync(ct);
         }
 

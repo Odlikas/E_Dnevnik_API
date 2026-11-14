@@ -133,6 +133,11 @@ E_Dnevnik_API/
 | `PORT` | No | Port to listen on (default: `5168`) |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | No | Firebase service account JSON content for push notifications and Firestore |
 | `STRIPE_SECRET_KEY` | Yes (payments) | Stripe secret key — app throws on startup if missing |
+| `Carnet__Enabled` | No (default `true`) | **Kill switch.** `false` + `systemctl restart ednevnik` = no request goes to e-Dnevnik; endpoints return 503 (`carnet_paused`, `Retry-After`) |
+| `Carnet__MaxRequestsPerSecond` | No (default `4`) | Global cap on requests to e-Dnevnik across all users; `0` = no cap |
+| `Carnet__MaxQueueWait` | No (default `00:00:30`) | Longest a request may wait for its slot before it's refused as overload |
+| `Carnet__FailureThreshold` / `Carnet__FailureWindow` | No (default `3` / `00:01:00`) | Circuit breaker: this many 5xx/timeouts/network errors within the window pauses all traffic; a 429 pauses at once |
+| `Carnet__Pause` / `Carnet__MaxPause` | No (default `00:05:00` / `01:00:00`) | First pause; doubles on each failed trial request, capped at `MaxPause`. A longer `Retry-After` from e-Dnevnik wins |
 
 ---
 

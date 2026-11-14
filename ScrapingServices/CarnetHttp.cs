@@ -28,9 +28,13 @@ namespace E_Dnevnik_API.ScrapingServices
             string? userKey,
             TimeSpan? timeout = null,
             CarnetRequestStats? stats = null,
-            DelegatingHandler? outerHandler = null
+            DelegatingHandler? outerHandler = null,
+            CarnetGuard? guard = null
         )
         {
+            guard ??= CarnetGuard.Shared;
+            var requestTimeout = timeout ?? DefaultTimeout;
+
             var handler = new HttpClientHandler { UseCookies = true, CookieContainer = cookies };
             var counting = new CarnetRequestCountingHandler(
                 stats ?? CarnetRequestStats.Shared,
@@ -40,16 +44,19 @@ namespace E_Dnevnik_API.ScrapingServices
             {
                 InnerHandler = handler,
             };
+            // guard prije brojanja: blokirani zahtjevi se ne broje kao poslani
+            var guarded = new CarnetGuardHandler(guard, requestTimeout) { InnerHandler = counting };
 
             // outerHandler (npr. /v2/sync razmak + provjera sesije) vidi konačni odgovor nakon redirecta
-            HttpMessageHandler top = counting;
+            HttpMessageHandler top = guarded;
             if (outerHandler != null)
             {
-                outerHandler.InnerHandler = counting;
+                outerHandler.InnerHandler = guarded;
                 top = outerHandler;
             }
 
-            var client = new HttpClient(top) { Timeout = timeout ?? DefaultTimeout };
+            // timeout jednog zahtjeva mjeri guard; HttpClient.Timeout je samo rezerva koja pokriva i čekanje u redu
+            var client = new HttpClient(top) { Timeout = guard.ClientTimeoutFor(requestTimeout) };
             client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", UserAgent);
             return client;
         }

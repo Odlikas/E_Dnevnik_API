@@ -37,6 +37,9 @@ namespace E_Dnevnik_API.V2.Sync
         private readonly TimeSpan _minGap;
         private DateTimeOffset? _last;
 
+        // koliko je odgovora stvarno stiglo od CARNET-a kroz ovaj handler (sync_runs.carnet_requests)
+        public int Requests { get; private set; }
+
         public EdnevnikSessionHandler(TimeProvider time, TimeSpan? minGap = null)
         {
             _time = time;
@@ -59,6 +62,7 @@ namespace E_Dnevnik_API.V2.Sync
             try
             {
                 response = await base.SendAsync(request, cancellationToken);
+                Requests++;
             }
             finally
             {

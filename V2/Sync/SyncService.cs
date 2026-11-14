@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using E_Dnevnik_API.ScrapingServices;
 
 namespace E_Dnevnik_API.V2.Sync
 {
@@ -8,9 +9,10 @@ namespace E_Dnevnik_API.V2.Sync
         Forbidden,
         SessionInvalid,
         Unavailable,
+        CarnetPaused,
     }
 
-    public record SyncOutcome(SyncOutcomeKind Kind, SyncResponse? Response = null);
+    public record SyncOutcome(SyncOutcomeKind Kind, SyncResponse? Response = null, TimeSpan? RetryAfter = null);
 
     public interface ISyncService
     {
@@ -18,7 +20,8 @@ namespace E_Dnevnik_API.V2.Sync
             Guid callerId,
             Guid childId,
             IReadOnlyList<SyncCookie> cookies,
-            CancellationToken ct
+            CancellationToken ct,
+            bool full = false
         );
     }
 
@@ -61,7 +64,8 @@ namespace E_Dnevnik_API.V2.Sync
             Guid callerId,
             Guid childId,
             IReadOnlyList<SyncCookie> cookies,
-            CancellationToken ct
+            CancellationToken ct,
+            bool full = false
         )
         {
             var child = await _repo.GetChildAsync(childId, ct);
@@ -74,7 +78,7 @@ namespace E_Dnevnik_API.V2.Sync
             await Gate.WaitAsync(ct);
             try
             {
-                return await RunAsync(callerId, child, cookies, ct);
+                return await RunAsync(callerId, child, cookies, full, ct);
             }
             finally
             {
@@ -86,6 +90,7 @@ namespace E_Dnevnik_API.V2.Sync
             Guid callerId,
             ChildRecord child,
             IReadOnlyList<SyncCookie> cookies,
+            bool full,
             CancellationToken ct
         )
         {
@@ -93,10 +98,19 @@ namespace E_Dnevnik_API.V2.Sync
             var today = SchoolYear.ZagrebToday(_time);
             var year = SchoolYear.Containing(today);
 
+            // inkrementalni sync: stranice ocjena samo za promijenjene / nove / dugo neosvježene predmete
+            var state = await _repo.GetFetchStateAsync(child.Id, year.Label, ct);
+            var lastSchedule = await _repo.LastScheduleFetchAsync(child.Id, ct);
+            var now = _time.GetUtcNow();
+            var options = new SyncFetchOptions(
+                list => SyncFetchPlan.PickGradePages(list, state, now, full),
+                SyncFetchPlan.ShouldFetchSchedule(lastSchedule, now, full)
+            );
+
             EdnevnikSnapshot snapshot;
             try
             {
-                snapshot = await _scraper.ScrapeAsync(cookies, child.Id.ToString("D"), ct);
+                snapshot = await _scraper.ScrapeAsync(cookies, child.Id.ToString("D"), options, ct);
             }
             catch (EdnevnikSessionInvalidException)
             {
@@ -114,6 +128,11 @@ namespace E_Dnevnik_API.V2.Sync
                 await _repo.FinishRunAsync(runId, "failed", 0, SyncErrorCodes.Unavailable, CancellationToken.None);
                 return new SyncOutcome(SyncOutcomeKind.Unavailable);
             }
+            catch (CarnetPausedException ex)
+            {
+                await _repo.FinishRunAsync(runId, "failed", 0, SyncErrorCodes.CarnetPaused, CancellationToken.None);
+                return new SyncOutcome(SyncOutcomeKind.CarnetPaused, RetryAfter: ex.RetryAfter);
+            }
 
             try
             {
@@ -121,7 +140,11 @@ namespace E_Dnevnik_API.V2.Sync
                     new SubjectMapper(await _repo.GetSubjectsAsync(ct)),
                     _repo.EdnevnikSubjectIdAsync
                 );
-                var plan = await PlanAsync(child.Id, snapshot, resolver, year, today, ct);
+                // prosjek predmeta čija stranica nije skinuta računamo iz već upisanih ocjena
+                var stored = snapshot.Subjects.Any(s => s.GradeHtml is null && !SubjectMapper.IsHomeroom(s.Info.SubjectName))
+                    ? await _repo.GetGradeValuesAsync(child.Id, year, ct)
+                    : null;
+                var plan = await PlanAsync(child.Id, snapshot, resolver, year, today, stored, ct);
                 var newGrades = await _repo.WriteAsync(
                     new SyncWrite(
                         runId,
@@ -134,7 +157,8 @@ namespace E_Dnevnik_API.V2.Sync
                         plan.Response.School,
                         plan.Response.ClassName,
                         plan.Timetable,
-                        today
+                        today,
+                        snapshot.CarnetRequests
                     ),
                     ct
                 );
@@ -164,6 +188,7 @@ namespace E_Dnevnik_API.V2.Sync
             SubjectResolver resolver,
             SchoolYear year,
             DateOnly today,
+            IReadOnlyDictionary<short, List<short>>? storedGrades = null,
             CancellationToken ct = default
         )
         {
@@ -193,8 +218,32 @@ namespace E_Dnevnik_API.V2.Sync
                 if (!seenSubjects.Add(subject.Id))
                     continue;
 
+                // stranica ovaj put nije skinuta: red ostaje (prosjek i vrijeme se ne diraju), ocjene su već u bazi
+                if (s.GradeHtml is null)
+                {
+                    childSubjects.Add(
+                        new ChildSubjectRow(
+                            subject.Id,
+                            s.Info.SubjectId,
+                            SyncSummary.OrNull(s.Info.Professor),
+                            s.Info.Grade,
+                            GradesFetched: false
+                        )
+                    );
+                    IReadOnlyCollection<short> known =
+                        storedGrades != null && storedGrades.TryGetValue(subject.Id, out var v) ? v : Array.Empty<short>();
+                    averages.Add((subject.NameHr, known));
+                    continue;
+                }
+
                 childSubjects.Add(
-                    new ChildSubjectRow(subject.Id, s.Info.SubjectId, SyncSummary.OrNull(s.Info.Professor))
+                    new ChildSubjectRow(
+                        subject.Id,
+                        s.Info.SubjectId,
+                        SyncSummary.OrNull(s.Info.Professor),
+                        s.Info.Grade,
+                        GradesFetched: true
+                    )
                 );
                 var parsed = GradePageParser.Parse(s.GradeHtml, year);
                 grades.AddRange(GradeRows.WithHashes(childId, subject.Id, parsed));

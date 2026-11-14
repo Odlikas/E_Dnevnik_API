@@ -40,8 +40,9 @@ public class CarnetGoodCitizenTests
             TimeSpan.FromSeconds(60)
         );
 
-        Assert.Equal(CarnetHttp.DefaultTimeout, def.Timeout);
-        Assert.Equal(TimeSpan.FromSeconds(60), custom.Timeout);
+        // guard mjeri sam zahtjev; HttpClient.Timeout je rezerva koja pokriva i čekanje u redu
+        Assert.Equal(CarnetGuard.Shared.ClientTimeoutFor(CarnetHttp.DefaultTimeout), def.Timeout);
+        Assert.Equal(CarnetGuard.Shared.ClientTimeoutFor(TimeSpan.FromSeconds(60)), custom.Timeout);
     }
 
     // --- Request counting ---

@@ -1,4 +1,5 @@
 using E_Dnevnik_API.Controllers;
+using E_Dnevnik_API.ScrapingServices;
 using E_Dnevnik_API.V2.Identity;
 using E_Dnevnik_API.V2.Sync;
 using Microsoft.Extensions.Configuration;
@@ -82,7 +83,7 @@ public class V2IdentityTests
         public SyncOutcome Outcome = new(SyncOutcomeKind.Ok, new SyncResponse { SubjectCount = 14, School = "Gimnazija Pula" });
         public Guid? SyncedChild;
 
-        public Task<SyncOutcome> SyncAsync(Guid callerId, Guid childId, IReadOnlyList<SyncCookie> cookies, CancellationToken ct)
+        public Task<SyncOutcome> SyncAsync(Guid callerId, Guid childId, IReadOnlyList<SyncCookie> cookies, CancellationToken ct, bool full = false)
         {
             SyncedChild = childId;
             return Task.FromResult(Outcome);
@@ -285,6 +286,10 @@ public class V2IdentityTests
         Assert.Equal(IdentityOutcomeKind.SessionInvalid, (await service.IdentifyAsync(Caller, "ivan.maric@skole.hr", Cookies, default)).Kind);
         scraper.Throw = new EdnevnikUnavailableException("down");
         Assert.Equal(IdentityOutcomeKind.Unavailable, (await service.IdentifyAsync(Caller, "ivan.maric@skole.hr", Cookies, default)).Kind);
+        scraper.Throw = new CarnetPausedException(CarnetPauseReason.CircuitOpen, TimeSpan.FromMinutes(3));
+        var paused = await service.IdentifyAsync(Caller, "ivan.maric@skole.hr", Cookies, default);
+        Assert.Equal(IdentityOutcomeKind.CarnetPaused, paused.Kind);
+        Assert.Equal(TimeSpan.FromMinutes(3), paused.RetryAfter);
         scraper.Throw = null;
         repo.Error = "already_bound";
         Assert.Equal(IdentityOutcomeKind.AlreadyBound, (await service.IdentifyAsync(Caller, "ivan.maric@skole.hr", Cookies, default)).Kind);
