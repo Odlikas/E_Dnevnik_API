@@ -203,6 +203,16 @@ builder.Services.AddHostedService<E_Dnevnik_API.V2.Push.PushWorker>();
 builder.Services.AddSingleton<E_Dnevnik_API.V2.Push.ISyncSignalRepository, E_Dnevnik_API.V2.Push.SyncSignalRepository>();
 builder.Services.AddHostedService<E_Dnevnik_API.V2.Push.SyncSignalWorker>();
 
+// --- v2: e-mailovi (public.email_outbox -> Resend; privola roditelja za srednjoškolca, Q381) ---
+// bez Supabasea ili RESEND_API_KEY radnik zapiše upozorenje i ugasi se; redovi čekaju u bazi
+builder.Services.AddHttpClient(
+    E_Dnevnik_API.V2.Email.ResendEmailSender.HttpClientName,
+    c => c.Timeout = TimeSpan.FromSeconds(15)
+);
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Email.IEmailOutboxRepository, E_Dnevnik_API.V2.Email.EmailOutboxRepository>();
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Email.IEmailSender, E_Dnevnik_API.V2.Email.ResendEmailSender>();
+builder.Services.AddHostedService<E_Dnevnik_API.V2.Email.EmailWorker>();
+
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
