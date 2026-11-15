@@ -207,6 +207,17 @@ Full API documentation: [`API_DOCUMENTATION.md`](API_DOCUMENTATION.md)
 
 Without them the app still starts and the old `/api/*` endpoints keep working; `/v2/sync` returns 503.
 
+## v2 e-mails (`email_outbox`)
+
+`EmailWorker` (`V2/Email/`) sends the rows the app's database puts in `public.email_outbox` (today only `hs_consent`, the parent consent for students under 16) through the Resend HTTP API, then stamps `sent_at`. Every 30 s it locks up to 10 unsent rows (`for update skip locked`), renders the Croatian template for `kind` from `payload`, sends it with `Idempotency-Key: email_outbox/<id>` (a crash between send and commit never sends twice) and commits. A failure is written to `error` as `<attempts>|<message>`; the row is retried after 1, 4, 16, 64 min, at most 5 times. Rows older than 7 days, or whose link (`payload.expires_at`) has expired, are not sent.
+
+| Config key | Env var | Example |
+|---|---|---|
+| `RESEND_API_KEY` (or `Resend:ApiKey`) | `RESEND_API_KEY` | `re_...` (Resend API key with sending access for `odlikas.hr`) |
+| (optional) | `EMAIL_FROM` | defaults to `Odlikaš <info@odlikas.hr>` |
+
+Without `RESEND_API_KEY` (or without `ConnectionStrings:Supabase`) the worker logs a warning once and stops; the rows wait in the table.
+
 ---
 
 ## Deployment

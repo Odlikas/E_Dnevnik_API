@@ -178,6 +178,48 @@ public class V2PushTests
         Assert.Contains("request_id", PushRepository.ClaimSql);
     }
 
+    private static readonly Guid GradeRow = Guid.Parse("ffffffff-0000-0000-0000-000000000001");
+
+    [Fact]
+    public void OneGradeCarriesItsSubjectAndGradeIds()
+    {
+        var g = Grade() with { SubjectId = 7, GradeId = GradeRow };
+        var plan = PushPlanner.Plan(new[] { g }, All, details: false);
+        Assert.All(plan, p => Assert.Equal("7", p.Data["subject_id"]));
+        Assert.All(plan, p => Assert.Equal(GradeRow.ToString(), p.Data["grade_id"]));
+        Assert.All(plan, p => Assert.Equal(Child.ToString(), p.Data["child_id"]));
+        // D213: the ids are only in data, never in the text
+        Assert.All(plan, p => Assert.Equal("Nova ocjena", p.Title));
+    }
+
+    [Fact]
+    public void SeveralGradesInOnePushHaveNoSubjectOrGradeId()
+    {
+        var rows = new[]
+        {
+            Grade() with { SubjectId = 7, GradeId = GradeRow },
+            Grade() with { SubjectId = 8, GradeId = Guid.NewGuid() },
+        };
+        var plan = PushPlanner.Plan(rows, All, details: false);
+        Assert.All(plan, p => Assert.False(p.Data.ContainsKey("subject_id")));
+        Assert.All(plan, p => Assert.False(p.Data.ContainsKey("grade_id")));
+    }
+
+    [Fact]
+    public void RowWithoutSubjectHasNoSubjectId()
+    {
+        var plan = PushPlanner.Plan(new[] { Ask(PushPlanner.TimeRequest) }, All, details: false);
+        Assert.False(plan[0].Data.ContainsKey("subject_id"));
+        Assert.False(plan[0].Data.ContainsKey("grade_id"));
+    }
+
+    [Fact]
+    public void ClaimReadsSubjectAndGradeIdsFromThePayload()
+    {
+        Assert.Contains("(n.payload ->> 'subject_id')::smallint end, ", PushRepository.ClaimSql);
+        Assert.Contains("(n.payload ->> 'grade_id')::uuid end from public.notifications", PushRepository.ClaimSql);
+    }
+
     [Fact]
     public void GradesAndHelpRequestsAreSeparatePushes()
     {

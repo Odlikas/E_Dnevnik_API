@@ -13,7 +13,11 @@ namespace E_Dnevnik_API.V2.Push
         string? Note,
         string? GradingElement,
         // zahtjev za vrijeme (payload 'request_id'), za time_request i time_declined
-        Guid? RequestId = null
+        Guid? RequestId = null,
+        // predmet (payload 'subject_id'), za new_grade, goal_proposal i goal_answer: aplikacija otvara taj predmet
+        short? SubjectId = null,
+        // ocjena (payload 'grade_id'), za new_grade
+        Guid? GradeId = null
     );
 
     public enum RecipientKind
