@@ -89,6 +89,11 @@ namespace E_Dnevnik_API.V2.Push
                 // jedan zahtjev: aplikacija ga otvara izravno; više njih: otvara Obavijesti
                 if (list.Count == 1 && list[0].RequestId is Guid request)
                     data["request_id"] = request.ToString();
+                // isto za predmet i ocjenu: jedna ocjena otvara svoj predmet, više njih samo Odlikaš
+                if (list.Count == 1 && list[0].SubjectId is short subject)
+                    data["subject_id"] = subject.ToString();
+                if (list.Count == 1 && list[0].GradeId is Guid grade)
+                    data["grade_id"] = grade.ToString();
                 result.Add(new OutgoingPush(token, who.Kind, title, body, data, list.Select(r => r.Id).ToList()));
             }
             return result;

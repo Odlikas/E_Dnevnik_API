@@ -14,7 +14,10 @@ namespace E_Dnevnik_API.V2.Push
             + "coalesce(g.value, case when n.payload ->> 'value' ~ '^[0-9]{1,4}$' then (n.payload ->> 'value')::smallint end), "
             + "g.note, g.grading_element, "
             + "case when n.payload ->> 'request_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
-            + "then (n.payload ->> 'request_id')::uuid end "
+            + "then (n.payload ->> 'request_id')::uuid end, "
+            + "case when n.payload ->> 'subject_id' ~ '^[0-9]{1,4}$' then (n.payload ->> 'subject_id')::smallint end, "
+            + "case when n.payload ->> 'grade_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
+            + "then (n.payload ->> 'grade_id')::uuid end "
             + "from public.notifications n "
             + "left join public.children c on c.id = n.child_id "
             + "left join public.grades g on g.id = case when n.payload ->> 'grade_id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' "
@@ -80,7 +83,9 @@ namespace E_Dnevnik_API.V2.Push
                             r.IsDBNull(7) ? null : r.GetInt16(7),
                             r.IsDBNull(8) ? null : r.GetString(8),
                             r.IsDBNull(9) ? null : r.GetString(9),
-                            r.IsDBNull(10) ? null : r.GetGuid(10)
+                            r.IsDBNull(10) ? null : r.GetGuid(10),
+                            r.IsDBNull(11) ? null : r.GetInt16(11),
+                            r.IsDBNull(12) ? null : r.GetGuid(12)
                         ));
                 }
 
