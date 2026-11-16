@@ -33,14 +33,14 @@ public class V2PushTests
     [Fact]
     public void FamilyWideRowGoesToEveryParentAndTheKidPhone()
     {
-        var who = PushPlanner.RecipientsOf(Grade(), All).Select(r => r.Token).ToList();
+        var who = PushPlanner.RecipientsOf(Grade(value: 2), All).Select(r => r.Token).ToList();
         Assert.Equal(new[] { "mama-fid", "tata-fid", "kid-fid" }, who);
     }
 
     [Fact]
     public void RowForOneParentGoesOnlyToThatParent()
     {
-        var who = PushPlanner.RecipientsOf(Grade(parent: Tata), All).Select(r => r.Token).ToList();
+        var who = PushPlanner.RecipientsOf(Grade(value: 2, parent: Tata), All).Select(r => r.Token).ToList();
         Assert.Equal(new[] { "tata-fid" }, who);
     }
 
@@ -79,8 +79,8 @@ public class V2PushTests
     [Fact]
     public void WithDetailsTwoChildrensGradesAreNotMerged()
     {
-        var ema = Grade();
-        var luka = Grade(subject: "Hrvatski") with { ChildId = Guid.NewGuid(), ChildFirstName = "Luka" };
+        var ema = Grade(value: 1);
+        var luka = Grade(subject: "Hrvatski", value: 2) with { ChildId = Guid.NewGuid(), ChildFirstName = "Luka" };
         var plan = PushPlanner.Plan(new[] { ema, luka }, new[] { MamaR }, details: true);
         Assert.Equal(2, plan.Count);
         Assert.Contains(plan, p => p.Title.StartsWith("Ema"));
@@ -223,9 +223,164 @@ public class V2PushTests
     [Fact]
     public void GradesAndHelpRequestsAreSeparatePushes()
     {
-        var plan = PushPlanner.Plan(new[] { Grade(), Grade(type: PushPlanner.HelpRequest) }, new[] { MamaR }, details: false);
+        var plan = PushPlanner.Plan(new[] { Grade(value: 2), Grade(type: PushPlanner.HelpRequest) }, new[] { MamaR }, details: false);
         Assert.Equal(2, plan.Count);
         Assert.Equal(new[] { "Nova ocjena", "Dijete treba pomoć" }, plan.Select(p => p.Title));
+    }
+
+    // --- B1 / nov-build types ---
+
+    private static PendingPush Row(string type, Guid? parent = null, short? subject = null, Guid? request = null, Guid? child = null) =>
+        new(Guid.NewGuid(), Family, parent, child ?? Child, type, "Ema", null, null, null, null, request, subject);
+
+    private static void NoPrivateText(OutgoingPush p)
+    {
+        Assert.DoesNotContain("Ema", p.Title + p.Body);
+        Assert.DoesNotContain("Matematika", p.Title + p.Body);
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(5, false)]
+    public void ParentsGetOnlyLowGrades(short value, bool parents)
+    {
+        var who = PushPlanner.RecipientsOf(Grade(value: value), All).Select(r => r.Token).ToList();
+        Assert.Contains("kid-fid", who);
+        Assert.Equal(parents, who.Contains("mama-fid"));
+        Assert.Equal(parents, who.Contains("tata-fid"));
+    }
+
+    [Fact]
+    public void GradeWithoutValueGoesOnlyToTheKid()
+    {
+        var g = Grade() with { Value = null };
+        Assert.Equal(new[] { "kid-fid" }, PushPlanner.RecipientsOf(g, All).Select(r => r.Token));
+    }
+
+    [Fact]
+    public void GoalProposalGoesOnlyToTheKidWithItsSubject()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.GoalProposal, subject: 7) }, All, details: true);
+        Assert.Equal(new[] { "kid-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Novi prijedlog cilja", plan[0].Title);
+        Assert.Equal("Roditelj ti je predložio cilj. Otvori Odlikaš i pogledaj.", plan[0].Body);
+        Assert.Equal("7", plan[0].Data["subject_id"]);
+        NoPrivateText(plan[0]);
+    }
+
+    [Fact]
+    public void GoalAnswerGoesOnlyToParentsWithTheChildId()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.GoalAnswer, subject: 7) }, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Odgovor na prijedlog cilja", p.Title));
+        Assert.All(plan, p => Assert.Equal(Child.ToString(), p.Data["child_id"]));
+        Assert.All(plan, NoPrivateText);
+        var detailed = PushPlanner.Plan(new[] { Row(PushPlanner.GoalAnswer) }, All, details: true);
+        Assert.Equal("Ema: odgovor na prijedlog cilja", detailed[0].Title);
+    }
+
+    [Fact]
+    public void MergedRowsOfTwoChildrenHaveNoChildId()
+    {
+        var rows = new[] { Row(PushPlanner.GoalAnswer), Row(PushPlanner.GoalAnswer, child: Guid.NewGuid()) };
+        var plan = PushPlanner.Plan(rows, new[] { MamaR }, details: false);
+        Assert.Single(plan);
+        Assert.False(plan[0].Data.ContainsKey("child_id"));
+    }
+
+    [Fact]
+    public void FreeDayRequestGoesOnlyToParentsWithTheRequestId()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.FreeDayRequest, request: Request) }, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Dijete traži slobodan dan", p.Title));
+        Assert.All(plan, p => Assert.Equal("Otvorite Odlikaš i odgovorite.", p.Body));
+        Assert.All(plan, p => Assert.Equal(Request.ToString(), p.Data["request_id"]));
+        Assert.All(plan, p => Assert.Equal(Child.ToString(), p.Data["child_id"]));
+        var detailed = PushPlanner.Plan(new[] { Row(PushPlanner.FreeDayRequest, request: Request) }, All, details: true);
+        Assert.Equal("Ema traži slobodan dan", detailed[0].Title);
+    }
+
+    [Fact]
+    public void FreeDayAnswersGoOnlyToTheKid()
+    {
+        var given = PushPlanner.Plan(new[] { Row(PushPlanner.FreeDayGiven) }, All, details: true);
+        Assert.Equal(new[] { "kid-fid" }, given.Select(p => p.Token));
+        Assert.Equal("Roditelj ti je dao slobodan dan", given[0].Title);
+        var declined = PushPlanner.Plan(new[] { Row(PushPlanner.FreeDayDeclined, request: Request) }, All, details: true);
+        Assert.Equal(new[] { "kid-fid" }, declined.Select(p => p.Token));
+        Assert.Equal("Roditelj je odgovorio", declined[0].Title);
+        Assert.DoesNotContain("odbi", declined[0].Title + declined[0].Body);
+    }
+
+    [Fact]
+    public void AbsenceGoesOnlyToParentsWithTheChildId()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.Absence) }, All, details: true);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Izostanak čeka opravdanje", p.Title));
+        Assert.All(plan, p => Assert.Equal("Dodirnite za datum i opravdanje u e-Dnevniku.", p.Body));
+        Assert.All(plan, p => Assert.Equal(Child.ToString(), p.Data["child_id"]));
+        Assert.All(plan, NoPrivateText);
+        var three = PushPlanner.Plan(new[] { Row(PushPlanner.Absence), Row(PushPlanner.Absence), Row(PushPlanner.Absence) },
+            new[] { MamaR }, details: false);
+        Assert.Equal("3 izostanka čekaju opravdanje", three.Single().Title);
+    }
+
+    [Theory]
+    [InlineData(1, "Izostanak čeka opravdanje")]
+    [InlineData(2, "2 izostanka čekaju opravdanje")]
+    [InlineData(5, "5 izostanaka čeka opravdanje")]
+    [InlineData(12, "12 izostanaka čeka opravdanje")]
+    [InlineData(21, "21 izostanak čeka opravdanje")]
+    public void AbsencePlural(int n, string text) => Assert.Equal(text, PushPlanner.AbsenceTitle(n));
+
+    [Fact]
+    public void FamilySharingGuideGoesOnlyToThatParent()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.FamilySharingGuide, parent: Tata) }, All, details: false);
+        Assert.Equal(new[] { "tata-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Postavite Obiteljsko dijeljenje", plan[0].Title);
+        NoPrivateText(plan[0]);
+        var detailed = PushPlanner.Plan(new[] { Row(PushPlanner.FamilySharingGuide, parent: Tata) }, All, details: true);
+        Assert.Equal("Ema: postavite Obiteljsko dijeljenje", detailed[0].Title);
+    }
+
+    [Fact]
+    public void HsUnlinkedGoesOnlyToThatParentWithoutAName()
+    {
+        var plan = PushPlanner.Plan(new[] { Row(PushPlanner.HsUnlinked, parent: Mama) }, All, details: true);
+        Assert.Equal(new[] { "mama-fid" }, plan.Select(p => p.Token));
+        Assert.Equal("Dijeljenje je prekinuto", plan[0].Title);
+        NoPrivateText(plan[0]);
+    }
+
+    [Theory]
+    [InlineData(PushPlanner.HsParentLinked, "Roditelj je prihvatio poziv")]
+    [InlineData(PushPlanner.HsInviteDeclined, "Roditelj je odgovorio")]
+    [InlineData(PushPlanner.HsConsentConfirmed, "Roditelj je potvrdio privolu")]
+    [InlineData(PushPlanner.HsConsentDeclined, "Roditelj je odgovorio")]
+    public void StudentAnswersGoOnlyToTheStudentsPhone(string type, string title)
+    {
+        var plan = PushPlanner.Plan(new[] { Row(type) }, All, details: true);
+        Assert.Equal(new[] { "kid-fid" }, plan.Select(p => p.Token));
+        Assert.Equal(title, plan[0].Title);
+        Assert.Equal(type, plan[0].Data["type"]);
+    }
+
+    [Fact]
+    public void EveryTypeTheAppInsertsHasAText()
+    {
+        foreach (var type in PushPlanner.KnownTypes)
+        {
+            var (title, body) = PushPlanner.Text(new[] { Row(type) }, RecipientKind.Parent, details: false);
+            Assert.False(string.IsNullOrWhiteSpace(title), type);
+            Assert.False(string.IsNullOrWhiteSpace(body), type);
+            Assert.DoesNotContain("Ema", title + body);
+        }
     }
 
     // --- text ---
@@ -265,14 +420,17 @@ public class V2PushTests
     [Fact]
     public void SeveralGradesForOnePhoneBecomeOnePush()
     {
-        var rows = new[] { Grade(), Grade("Fizika", 4), Grade("Kemija", 3) };
+        var rows = new[] { Grade(value: 2), Grade("Fizika", 1), Grade("Kemija", 3) };
         var pushes = PushPlanner.Plan(rows, All, details: true);
         Assert.Equal(3, pushes.Count); // mama, tata, kid
         var kid = pushes.Single(p => p.Token == "kid-fid");
         Assert.Equal("3 nove ocjene", kid.Title);
-        Assert.Equal("Matematika 5, Fizika 4, Kemija 3", kid.Body);
+        Assert.Equal("Matematika 2, Fizika 1, Kemija 3", kid.Body);
         Assert.Equal(3, kid.Notifications.Count);
-        Assert.Equal("Ema: 3 nove ocjene", pushes.Single(p => p.Token == "mama-fid").Title);
+        // B1: parents get only the 1s and 2s
+        var mama = pushes.Single(p => p.Token == "mama-fid");
+        Assert.Equal("Ema: 2 nove ocjene", mama.Title);
+        Assert.Equal(2, mama.Notifications.Count);
         Assert.Equal("3", kid.Data["count"]);
         Assert.Equal(Child.ToString(), kid.Data["child_id"]);
     }
@@ -393,7 +551,7 @@ public class V2PushTests
     [Fact]
     public async Task RoundSendsStampsAndClearsDeadTokens()
     {
-        var row = Grade();
+        var row = Grade(value: 2);
         var repo = new FakeRepo { Claim = new FakeClaim { Rows = new[] { row }, Recipients = new[] { MamaR, KidR } } };
         var sender = new FakeSender { Status = p => p.Token == "kid-fid" ? SendStatus.DeadToken : SendStatus.Sent };
 
@@ -418,7 +576,7 @@ public class V2PushTests
     [Fact]
     public async Task FcmFailureLeavesRowsForTheNextRound()
     {
-        var repo = new FakeRepo { Claim = new FakeClaim { Rows = new[] { Grade() }, Recipients = new[] { MamaR } } };
+        var repo = new FakeRepo { Claim = new FakeClaim { Rows = new[] { Grade(value: 2) }, Recipients = new[] { MamaR } } };
         var sender = new FakeSender { Throw = true };
         await Assert.ThrowsAsync<HttpRequestException>(() => Worker(repo, sender).RunOnceAsync(CancellationToken.None));
         Assert.Null(repo.Claim.Pushed); // not completed: rolled back on dispose
