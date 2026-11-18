@@ -6,7 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace E_Dnevnik_API.Controllers
 {
-    // POST /v2/ai/ask ("Pitaj Josu") i POST /v2/ai/photo ("Slikaj i razumij"): Supabase JWT djeteta
+    // POST /v2/ai/ask ("Pitaj Josu") i POST /v2/ai/photo ("Slikaj i razumij"): Supabase JWT djeteta;
+    // POST /v2/ai/explain ("Objasni Luki"): JWT roditelja
     // namjerno bez [ApiController] da i loš JSON vrati {"error":"bad_request"}
     [Route("v2/ai")]
     public class V2AiController : ControllerBase
@@ -21,15 +22,18 @@ namespace E_Dnevnik_API.Controllers
         private readonly ISupabaseAuthClient _auth;
         private readonly IAskService _ask;
         private readonly IPhotoService _photo;
+        private readonly IExplainService _explain;
         private readonly ILogger<V2AiController> _logger;
 
         public V2AiController(
             ISupabaseAuthClient auth,
             IAskService ask,
             IPhotoService photo,
+            IExplainService explain,
             ILogger<V2AiController> logger
         )
         {
+            _explain = explain;
             _auth = auth;
             _ask = ask;
             _photo = photo;
@@ -86,6 +90,33 @@ namespace E_Dnevnik_API.Controllers
                 PhotoOutcomeKind.SubjectNotAllowed => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.SubjectNotAllowed),
                 PhotoOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
                 PhotoOutcomeKind.Unreadable => Error(HttpStatusCode.UnprocessableEntity, PhotoErrorCodes.Unreadable),
+                _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
+            };
+        }
+
+        // "Objasni Luki": Supabase JWT roditelja; Joso piše bilješku u djetetove Bilješke
+        [HttpPost("explain")]
+        [RequestSizeLimit(4 * 1024)]
+        public async Task<IActionResult> Explain(CancellationToken ct)
+        {
+            if (!_explain.IsConfigured || !_auth.IsConfigured)
+                return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.NotConfigured);
+            var (callerId, denied) = await CallerAsync(ct);
+            if (denied is not null)
+                return denied;
+
+            var body = await ReadAsync<ExplainRequest>(ct);
+            if (body?.NotificationId is not { } notificationId)
+                return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
+
+            var outcome = await _explain.ExplainAsync(callerId, notificationId, ct);
+            return outcome.Kind switch
+            {
+                ExplainOutcomeKind.Ok => Ok(outcome.Response),
+                ExplainOutcomeKind.NotFound => Error(HttpStatusCode.NotFound, ExplainErrorCodes.NotFound),
+                ExplainOutcomeKind.PremiumRequired => Error(HttpStatusCode.PaymentRequired, ExplainErrorCodes.PremiumRequired),
+                ExplainOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
+                ExplainOutcomeKind.NothingToExplain => Error(HttpStatusCode.UnprocessableEntity, ExplainErrorCodes.NothingToExplain),
                 _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
             };
         }

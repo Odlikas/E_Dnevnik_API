@@ -16,6 +16,9 @@ namespace E_Dnevnik_API.V2.Ai
 
         // slika zadatka (JPEG/PNG bajtovi) + upute -> sirovi tekst modela i tokeni
         Task<AiCompletion> ReadImageAsync(string system, string instruction, byte[] image, string mime, CancellationToken ct);
+
+        // jedan sustavni i jedan korisnički tekst, modeli za razgovor (npr. "Objasni Luki")
+        Task<AiCompletion> WriteAsync(string system, string instruction, CancellationToken ct);
     }
 
     // Model = koji je model odgovorio (ide u ai_calls.provider)
@@ -82,6 +85,16 @@ namespace E_Dnevnik_API.V2.Ai
                 },
             };
             return CompleteAsync(messages, 4000, AiOptions.Split(_options.VisionModels), ct);
+        }
+
+        public Task<AiCompletion> WriteAsync(string system, string instruction, CancellationToken ct)
+        {
+            var messages = new JsonArray
+            {
+                new JsonObject { ["role"] = "system", ["content"] = system },
+                new JsonObject { ["role"] = "user", ["content"] = instruction },
+            };
+            return CompleteAsync(messages, 2500, AiOptions.Split(_options.ChatModels), ct);
         }
 
         // OpenAI /chat/completions s prvim modelom s popisa koji odgovori; svaki pokušaj ima svoj rok
