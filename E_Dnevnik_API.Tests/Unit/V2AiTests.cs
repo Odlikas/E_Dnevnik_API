@@ -86,6 +86,24 @@ public class V2AiTests
             return Task.FromResult(new AiCompletion(PhotoContent, 900, 300));
         }
 
+        public string HomeworkContent = HomeworkJson;
+        public int HomeworkImages;
+        public string? HomeworkSystem;
+
+        public Task<AiCompletion> ReadImagesAsync(
+            string system,
+            string instruction,
+            IReadOnlyList<(byte[] Bytes, string Mime)> images,
+            CancellationToken ct
+        )
+        {
+            if (Fail)
+                throw new HttpRequestException("down");
+            HomeworkSystem = system;
+            HomeworkImages = images.Count;
+            return Task.FromResult(new AiCompletion(HomeworkContent, 1500, 400, "v"));
+        }
+
         public string WriteContent = ExplainJson;
         public string? WriteInstruction;
 
@@ -223,6 +241,114 @@ public class V2AiTests
          "similar": [{"expression": "{1/2} + {1/4} = ?", "difficulty": "easy", "answer": "{3/4}",
                       "choices": ["{2/6}", "{3/4}", "{2/6}", "{1/8}", "{2/8}"], "why": "Proširi na četvrtine."}, {"expression": "{2/3} + {1/6} = ?", "difficulty": "weird"}]}
         """;
+
+    private sealed class FakeHomeworkRepo : IHomeworkRepository
+    {
+        public int Checks;
+        public readonly List<HomeworkResult> Saved = new();
+        public bool IsConfigured => true;
+
+        public Task<int> CountChecksAsync(Guid childId, DateTimeOffset since, CancellationToken ct) => Task.FromResult(Checks);
+
+        public Task<Guid> SaveCheckAsync(Asker asker, HomeworkResult result, CancellationToken ct)
+        {
+            Saved.Add(result);
+            return Task.FromResult(Guid.NewGuid());
+        }
+    }
+
+    private const string HomeworkJson = """
+        ```json
+        {"readable": true, "subject": "Hrvatski jezik", "title": "Množina imenica",
+         "lines": [{"number": 1, "text": "kuća – kuće", "correct": true},
+                   {"number": 2, "text": "čovjek – čovjeci", "correct": false, "prompt": "čovjek –", "answer": "ljudi",
+                    "accepted": ["Ljudi", "ljudi"], "answer_hint": "upiši množinu…",
+                    "hints": ["Posebna riječ.", "Množina je ljudi.", "Počinje na lj."]},
+                   {"number": 2, "text": "oko – oči", "correct": false},
+                   {"text": "", "correct": true}]}
+        ```
+        """;
+
+    private static HomeworkService Homework(FakeRepo repo, FakeHomeworkRepo hw, FakeAi ai) =>
+        new(repo, hw, ai, TimeProvider.System, NullLogger<HomeworkService>.Instance);
+
+    [Fact]
+    public async Task Homework_ChecksPagesAndHidesTheAnswers()
+    {
+        var (repo, hw, ai) = (new FakeRepo(), new FakeHomeworkRepo(), new FakeAi());
+        var pages = new List<(byte[], string)> { (Jpeg, "image/jpeg"), (Jpeg, "image/jpeg") };
+
+        var outcome = await Homework(repo, hw, ai).CheckAsync(Caller, pages, default);
+
+        Assert.Equal(HomeworkOutcomeKind.Ok, outcome.Kind);
+        Assert.Equal(2, ai.HomeworkImages);
+        Assert.Contains("5. razreda osnovne škole", ai.HomeworkSystem);
+        var lines = outcome.Response!.Lines;
+        Assert.Equal(new[] { 1, 2, 3 }, lines.Select(l => l.Number));
+        Assert.False(lines[1].Correct);
+        Assert.Equal("čovjek –", lines[1].Prompt);
+        // the hint that gives the answer away is dropped
+        Assert.Equal(new[] { "Posebna riječ.", "Počinje na lj." }, lines[1].Hints);
+        // a wrong line without an answer can't be fixed, so it counts as right
+        Assert.True(lines[2].Correct);
+        var saved = Assert.Single(hw.Saved);
+        Assert.Equal("ljudi", saved.Lines[1].Answer);
+        Assert.Empty(saved.Lines[1].Accepted);
+        Assert.True(saved.HasMistakes);
+        Assert.Equal("homework", repo.Logged.Single().Feature);
+        Assert.Equal(2, repo.Logged.Single().Images);
+        Assert.DoesNotContain("ljudi", System.Text.Json.JsonSerializer.Serialize(outcome.Response));
+    }
+
+    [Fact]
+    public async Task Homework_RefusesWhatItCannotCheck()
+    {
+        var pages = new List<(byte[], string)> { (Jpeg, "image/jpeg") };
+        var limit = new FakeHomeworkRepo { Checks = HomeworkService.HardDailyCap };
+        Assert.Equal(
+            HomeworkOutcomeKind.LimitReached,
+            (await Homework(new FakeRepo(), limit, new FakeAi()).CheckAsync(Caller, pages, default)).Kind
+        );
+        Assert.Equal(
+            HomeworkOutcomeKind.NotAChild,
+            (await Homework(new FakeRepo { Asker = null }, new FakeHomeworkRepo(), new FakeAi()).CheckAsync(Caller, pages, default)).Kind
+        );
+        var blank = new FakeAi { HomeworkContent = "{\"readable\": false}" };
+        var hw = new FakeHomeworkRepo();
+        Assert.Equal(
+            HomeworkOutcomeKind.Unreadable,
+            (await Homework(new FakeRepo(), hw, blank).CheckAsync(Caller, pages, default)).Kind
+        );
+        Assert.Empty(hw.Saved);
+        Assert.Equal(
+            HomeworkOutcomeKind.AiUnavailable,
+            (await Homework(new FakeRepo(), new FakeHomeworkRepo(), new FakeAi { Fail = true }).CheckAsync(Caller, pages, default)).Kind
+        );
+    }
+
+    [Theory]
+    [InlineData("Množina je ljudi.", "ljudi", true)]
+    [InlineData("Zbroj je {5/6}.", "{5/6}", true)]
+    [InlineData("Ljudima se to događa.", "ljudi", false)]
+    [InlineData("Pomnoži sa 6.", "6", false)]
+    public void Homework_HintRevealsAnswer(string hint, string answer, bool reveals) =>
+        Assert.Equal(reveals, HomeworkAnswerParser.Reveals(hint, answer));
+
+    [Fact]
+    public void Homework_NormMatchesTheDatabase()
+    {
+        Assert.Equal("ljudi", HomeworkAnswerParser.Norm(" Ljudi. "));
+        Assert.Equal("5/6", HomeworkAnswerParser.Norm("{5 / 6}"));
+        Assert.Equal("0.5", HomeworkAnswerParser.Norm("0,5"));
+    }
+
+    [Fact]
+    public void Homework_ItemsKeepNoAnswers()
+    {
+        var result = HomeworkAnswerParser.Parse(HomeworkJson)!;
+        Assert.DoesNotContain("ljudi", HomeworkRepository.ItemsOf(result).ToJsonString());
+        Assert.Equal("ljudi", HomeworkRepository.AnswersOf(result)["2"]!["answer"]!.GetValue<string>());
+    }
 
     private static PhotoService Photos(FakeRepo repo, FakeAi ai) =>
         new(repo, ai, TimeProvider.System, NullLogger<PhotoService>.Instance);

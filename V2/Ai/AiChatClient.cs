@@ -17,6 +17,14 @@ namespace E_Dnevnik_API.V2.Ai
         // slika zadatka (JPEG/PNG bajtovi) + upute -> sirovi tekst modela i tokeni
         Task<AiCompletion> ReadImageAsync(string system, string instruction, byte[] image, string mime, CancellationToken ct);
 
+        // više slika u jednoj poruci (stranice zadaće)
+        Task<AiCompletion> ReadImagesAsync(
+            string system,
+            string instruction,
+            IReadOnlyList<(byte[] Bytes, string Mime)> images,
+            CancellationToken ct
+        );
+
         // jedan sustavni i jedan korisnički tekst, modeli za razgovor (npr. "Objasni Luki")
         Task<AiCompletion> WriteAsync(string system, string instruction, CancellationToken ct);
     }
@@ -65,24 +73,28 @@ namespace E_Dnevnik_API.V2.Ai
             byte[] image,
             string mime,
             CancellationToken ct
+        ) => ReadImagesAsync(system, instruction, [(image, mime)], ct);
+
+        public Task<AiCompletion> ReadImagesAsync(
+            string system,
+            string instruction,
+            IReadOnlyList<(byte[] Bytes, string Mime)> images,
+            CancellationToken ct
         )
         {
+            var content = new JsonArray { new JsonObject { ["type"] = "text", ["text"] = instruction } };
+            foreach (var (bytes, mime) in images)
+                content.Add(
+                    new JsonObject
+                    {
+                        ["type"] = "image_url",
+                        ["image_url"] = new JsonObject { ["url"] = $"data:{mime};base64,{Convert.ToBase64String(bytes)}" },
+                    }
+                );
             var messages = new JsonArray
             {
                 new JsonObject { ["role"] = "system", ["content"] = system },
-                new JsonObject
-                {
-                    ["role"] = "user",
-                    ["content"] = new JsonArray
-                    {
-                        new JsonObject { ["type"] = "text", ["text"] = instruction },
-                        new JsonObject
-                        {
-                            ["type"] = "image_url",
-                            ["image_url"] = new JsonObject { ["url"] = $"data:{mime};base64,{Convert.ToBase64String(image)}" },
-                        },
-                    },
-                },
+                new JsonObject { ["role"] = "user", ["content"] = content },
             };
             return CompleteAsync(messages, 4000, AiOptions.Split(_options.VisionModels), ct);
         }
