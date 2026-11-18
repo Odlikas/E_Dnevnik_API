@@ -13,8 +13,16 @@ namespace E_Dnevnik_API.V2.Ai
         // zadnjih [limit] poruka od [since], najstarija prva (kontekst za model)
         Task<List<ChatTurn>> RecentAsync(Guid childId, DateTimeOffset since, int limit, CancellationToken ct);
         Task SaveAsync(Asker asker, string question, AskMessage answer, CancellationToken ct);
-        Task LogCallAsync(Guid familyId, string provider, bool ok, int inputTokens, int outputTokens, int latencyMs, CancellationToken ct);
+        Task LogCallAsync(AiCall call, CancellationToken ct);
+
+        // roditeljeva pravila za slikanje; Default kad redak ne postoji
+        Task<PhotoHelpRules> GetPhotoRulesAsync(Guid childId, CancellationToken ct);
+        Task<int> CountPhotosAsync(Guid childId, DateTimeOffset since, CancellationToken ct);
+        Task<Guid> SavePhotoAsync(Asker asker, string subject, PhotoResult result, CancellationToken ct);
     }
+
+    // jedan redak public.ai_calls; Feature 'ask' | 'photo'
+    public record AiCall(Guid FamilyId, string Feature, string Provider, bool Ok, int Images, int InputTokens, int OutputTokens, int LatencyMs);
 
     // čisti Npgsql kao uloga ednevnik_service (grantovi u 20261118000100_ask_messages.sql)
     public class AiRepository : IAiRepository
@@ -105,29 +113,74 @@ namespace E_Dnevnik_API.V2.Ai
             await cmd.ExecuteNonQueryAsync(ct);
         }
 
-        public async Task LogCallAsync(
-            Guid familyId,
-            string provider,
-            bool ok,
-            int inputTokens,
-            int outputTokens,
-            int latencyMs,
-            CancellationToken ct
-        )
+        public async Task LogCallAsync(AiCall call, CancellationToken ct)
         {
             await using var cmd = Db.CreateCommand(
                 """
-                insert into public.ai_calls (family_id, feature, route, provider, input_tokens, output_tokens, ok, latency_ms)
-                values ($1, 'ask', 'small', $2, $3, $4, $5, $6)
+                insert into public.ai_calls (family_id, feature, route, provider, images, input_tokens, output_tokens, ok, latency_ms)
+                values ($1, $2, 'small', $3, $4, $5, $6, $7, $8)
                 """
             );
-            cmd.Parameters.Add(new NpgsqlParameter { Value = familyId });
-            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = provider });
-            cmd.Parameters.Add(new NpgsqlParameter { Value = inputTokens });
-            cmd.Parameters.Add(new NpgsqlParameter { Value = outputTokens });
-            cmd.Parameters.Add(new NpgsqlParameter { Value = ok });
-            cmd.Parameters.Add(new NpgsqlParameter { Value = latencyMs });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = call.FamilyId });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = call.Feature });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = call.Provider });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Smallint, Value = (short)call.Images });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = call.InputTokens });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = call.OutputTokens });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = call.Ok });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = call.LatencyMs });
             await cmd.ExecuteNonQueryAsync(ct);
+        }
+
+        public async Task<PhotoHelpRules> GetPhotoRulesAsync(Guid childId, CancellationToken ct)
+        {
+            await using var cmd = Db.CreateCommand(
+                """
+                select photo_help_enabled, photo_help_level, photo_help_daily_cap, photo_help_subjects
+                from public.child_settings where child_id = $1
+                """
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = childId });
+            await using var r = await cmd.ExecuteReaderAsync(ct);
+            if (!await r.ReadAsync(ct))
+                return PhotoHelpRules.Default;
+            return new PhotoHelpRules(
+                r.IsDBNull(0) || r.GetBoolean(0),
+                r.IsDBNull(1) ? "steps" : r.GetString(1),
+                r.IsDBNull(2) ? PhotoHelpRules.Default.DailyCap : r.GetInt16(2),
+                r.IsDBNull(3) ? null : r.GetFieldValue<short[]>(3)
+            );
+        }
+
+        public async Task<int> CountPhotosAsync(Guid childId, DateTimeOffset since, CancellationToken ct)
+        {
+            await using var cmd = Db.CreateCommand(
+                "select count(*) from public.photo_explanations where child_id = $1 and created_at >= $2"
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = childId });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = since.UtcDateTime, NpgsqlDbType = NpgsqlDbType.TimestampTz });
+            return Convert.ToInt32(await cmd.ExecuteScalarAsync(ct));
+        }
+
+        public async Task<Guid> SavePhotoAsync(Asker asker, string subject, PhotoResult result, CancellationToken ct)
+        {
+            await using var cmd = Db.CreateCommand(
+                """
+                insert into public.photo_explanations
+                  (child_id, family_id, subject, expression, topic, answer, steps, similar_tasks)
+                values ($1, $2, $3, $4, $5, $6, $7, $8)
+                returning id
+                """
+            );
+            cmd.Parameters.Add(new NpgsqlParameter { Value = asker.ChildId });
+            cmd.Parameters.Add(new NpgsqlParameter { Value = asker.FamilyId });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = subject });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = result.Expression });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = result.Topic });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Text, Value = result.Answer });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = result.Steps.ToJsonString() });
+            cmd.Parameters.Add(new NpgsqlParameter { NpgsqlDbType = NpgsqlDbType.Jsonb, Value = result.SimilarTasks.ToJsonString() });
+            return (Guid)(await cmd.ExecuteScalarAsync(ct))!;
         }
     }
 }
