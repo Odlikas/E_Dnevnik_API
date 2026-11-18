@@ -13,7 +13,12 @@ namespace E_Dnevnik_API.V2.Ai
 
         // baca HttpRequestException / TaskCanceledException kad model ne odgovori
         Task<AiReply> AskAsync(string system, IReadOnlyList<ChatTurn> history, string question, CancellationToken ct);
+
+        // slika zadatka (JPEG/PNG bajtovi) + upute -> sirovi tekst modela i tokeni
+        Task<AiCompletion> ReadImageAsync(string system, string instruction, byte[] image, string mime, CancellationToken ct);
     }
+
+    public record AiCompletion(string Content, int InputTokens, int OutputTokens);
 
     // OpenAI-kompatibilni /chat/completions (freellmapi sada; drugi pružatelj = samo env postavke)
     public class AiChatClient : IAiChatClient
@@ -43,12 +48,47 @@ namespace E_Dnevnik_API.V2.Ai
             foreach (var turn in history)
                 messages.Add(new JsonObject { ["role"] = turn.FromChild ? "user" : "assistant", ["content"] = turn.Text });
             messages.Add(new JsonObject { ["role"] = "user", ["content"] = question });
+            var c = await CompleteAsync(messages, 700, ct);
+            return new AiReply(AskAnswerParser.Parse(c.Content), c.InputTokens, c.OutputTokens);
+        }
+
+        public Task<AiCompletion> ReadImageAsync(
+            string system,
+            string instruction,
+            byte[] image,
+            string mime,
+            CancellationToken ct
+        )
+        {
+            var messages = new JsonArray
+            {
+                new JsonObject { ["role"] = "system", ["content"] = system },
+                new JsonObject
+                {
+                    ["role"] = "user",
+                    ["content"] = new JsonArray
+                    {
+                        new JsonObject { ["type"] = "text", ["text"] = instruction },
+                        new JsonObject
+                        {
+                            ["type"] = "image_url",
+                            ["image_url"] = new JsonObject { ["url"] = $"data:{mime};base64,{Convert.ToBase64String(image)}" },
+                        },
+                    },
+                },
+            };
+            return CompleteAsync(messages, 2000, ct);
+        }
+
+        // OpenAI /chat/completions; model "auto" (freellmapi sam bira model s vidom kad je slika u poruci)
+        private async Task<AiCompletion> CompleteAsync(JsonArray messages, int maxTokens, CancellationToken ct)
+        {
             var body = new JsonObject
             {
                 ["model"] = _options.Model,
                 ["messages"] = messages,
-                ["temperature"] = 0.4,
-                ["max_tokens"] = 700,
+                ["temperature"] = 0.3,
+                ["max_tokens"] = maxTokens,
             };
 
             var client = _factory.CreateClient(HttpClientName);
@@ -68,16 +108,16 @@ namespace E_Dnevnik_API.V2.Ai
                 && choices.ValueKind == JsonValueKind.Array
                 && choices.GetArrayLength() > 0
                 && choices[0].TryGetProperty("message", out var message)
-                && message.TryGetProperty("content", out var c)
-                && c.ValueKind == JsonValueKind.String
-                ? c.GetString()
+                && message.TryGetProperty("content", out var text)
+                && text.ValueKind == JsonValueKind.String
+                ? text.GetString()
                 : null;
             if (string.IsNullOrWhiteSpace(content))
                 throw new HttpRequestException("ai answered without content");
 
             int Tokens(string name) =>
                 root.TryGetProperty("usage", out var u) && u.TryGetProperty(name, out var t) && t.TryGetInt32(out var n) ? n : 0;
-            return new AiReply(AskAnswerParser.Parse(content), Tokens("prompt_tokens"), Tokens("completion_tokens"));
+            return new AiCompletion(content, Tokens("prompt_tokens"), Tokens("completion_tokens"));
         }
     }
 }

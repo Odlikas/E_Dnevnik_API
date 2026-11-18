@@ -70,18 +70,22 @@ namespace E_Dnevnik_API.V2.Ai
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {
                 _logger.LogWarning("[v2/ai] model failed for family {FamilyId}: {Message}", asker.FamilyId, ex.Message);
-                await _repo.LogCallAsync(asker.FamilyId, _ai.Provider, false, 0, 0, (int)watch.ElapsedMilliseconds, ct);
+                await _repo.LogCallAsync(new AiCall(asker.FamilyId, "ask", _ai.Provider, false, 0, 0, 0, (int)watch.ElapsedMilliseconds), ct);
                 return new AskOutcome(AskOutcomeKind.AiUnavailable);
             }
 
             await _repo.SaveAsync(asker, question, reply.Message, ct);
             await _repo.LogCallAsync(
-                asker.FamilyId,
-                _ai.Provider,
-                true,
-                reply.InputTokens,
-                reply.OutputTokens,
-                (int)watch.ElapsedMilliseconds,
+                new AiCall(
+                    asker.FamilyId,
+                    "ask",
+                    _ai.Provider,
+                    true,
+                    0,
+                    reply.InputTokens,
+                    reply.OutputTokens,
+                    (int)watch.ElapsedMilliseconds
+                ),
                 ct
             );
             return new AskOutcome(

@@ -34,10 +34,27 @@ public class V2AiTests
             return Task.CompletedTask;
         }
 
-        public Task LogCallAsync(Guid f, string p, bool ok, int i, int o, int l, CancellationToken ct)
+        public PhotoHelpRules Rules = PhotoHelpRules.Default;
+        public int Photos;
+        public readonly List<PhotoResult> SavedPhotos = new();
+        public readonly List<AiCall> Logged = new();
+
+        public Task LogCallAsync(AiCall call, CancellationToken ct)
         {
-            Calls.Add(ok);
+            Calls.Add(call.Ok);
+            Logged.Add(call);
             return Task.CompletedTask;
+        }
+
+        public Task<PhotoHelpRules> GetPhotoRulesAsync(Guid childId, CancellationToken ct) => Task.FromResult(Rules);
+
+        public Task<int> CountPhotosAsync(Guid childId, DateTimeOffset since, CancellationToken ct) =>
+            Task.FromResult(Photos);
+
+        public Task<Guid> SavePhotoAsync(Asker asker, string subject, PhotoResult result, CancellationToken ct)
+        {
+            SavedPhotos.Add(result);
+            return Task.FromResult(Guid.NewGuid());
         }
     }
 
@@ -57,6 +74,105 @@ public class V2AiTests
             History = history;
             return Task.FromResult(new AiReply(new AskMessage { Text = "Evo:", Steps = { "Korak" } }, 10, 5));
         }
+
+        public string PhotoContent = PhotoJson;
+        public string? PhotoSystem;
+
+        public Task<AiCompletion> ReadImageAsync(string system, string instruction, byte[] image, string mime, CancellationToken ct)
+        {
+            if (Fail)
+                throw new HttpRequestException("down");
+            PhotoSystem = system;
+            return Task.FromResult(new AiCompletion(PhotoContent, 900, 300));
+        }
+    }
+
+    private const string PhotoJson = """
+        {"readable": true, "expression": "{3/4} + {1/6} = ?", "topic": "Razlomci", "answer": "{3/4} + {1/6} = {11/12}",
+         "steps": [{"title": "Nađi zajednički nazivnik", "text": "4 i 6 imaju višekratnik 12.", "formulas": ["{3/4} = {9/12} (× 3)"],
+                    "why": {"title": "Zašto 12?", "text": "Najmanji je.", "formula": "4 · 3 = 12", "tip": "Kao pizza."}},
+                   {"title": "", "text": "bez naslova se odbacuje"},
+                   {"title": "Zbroji", "formulas": ["{9/12} + {2/12} = {11/12}"]}],
+         "similar": [{"expression": "{1/2} + {1/4} = ?", "difficulty": "easy"}, {"expression": "{2/3} + {1/6} = ?", "difficulty": "weird"}]}
+        """;
+
+    private static PhotoService Photos(FakeRepo repo, FakeAi ai) =>
+        new(repo, ai, TimeProvider.System, NullLogger<PhotoService>.Instance);
+
+    private static readonly byte[] Jpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3 };
+
+    [Fact]
+    public async Task Photo_ExplainsAndSavesWithoutThePicture()
+    {
+        var repo = new FakeRepo();
+        var ai = new FakeAi();
+        var outcome = await Photos(repo, ai).ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default);
+
+        Assert.Equal(PhotoOutcomeKind.Ok, outcome.Kind);
+        Assert.Equal("Razlomci", outcome.Response!.Topic);
+        Assert.Equal(2, outcome.Response.Steps.Count);
+        Assert.Equal("medium", outcome.Response.SimilarTasks[1]!["difficulty"]!.GetValue<string>());
+        Assert.Single(repo.SavedPhotos);
+        Assert.Equal(("photo", 1, true), (repo.Logged[0].Feature, repo.Logged[0].Images, repo.Logged[0].Ok));
+        Assert.Contains("Matematika", ai.PhotoSystem);
+    }
+
+    [Fact]
+    public async Task Photo_FollowsTheParentsRules()
+    {
+        var off = new FakeRepo { Rules = PhotoHelpRules.Default with { Enabled = false } };
+        Assert.Equal(PhotoOutcomeKind.PhotoHelpOff, (await Photos(off, new FakeAi()).ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default)).Kind);
+
+        var onlyCroatian = new FakeRepo { Rules = PhotoHelpRules.Default with { Subjects = new short[] { 2 } } };
+        Assert.Equal(PhotoOutcomeKind.SubjectNotAllowed, (await Photos(onlyCroatian, new FakeAi()).ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default)).Kind);
+        Assert.Equal(PhotoOutcomeKind.Ok, (await Photos(onlyCroatian, new FakeAi()).ExplainAsync(Caller, "croatian", Jpeg, "image/jpeg", default)).Kind);
+
+        var capped = new FakeRepo { Rules = PhotoHelpRules.Default with { DailyCap = 3 }, Photos = 3 };
+        var ai = new FakeAi();
+        Assert.Equal(PhotoOutcomeKind.LimitReached, (await Photos(capped, ai).ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default)).Kind);
+        Assert.Null(ai.PhotoSystem);
+
+        var hints = new FakeRepo { Rules = PhotoHelpRules.Default with { Level = "hint" } };
+        var hintAi = new FakeAi();
+        await Photos(hints, hintAi).ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default);
+        Assert.Contains("BEZ konačnog rješenja", hintAi.PhotoSystem);
+    }
+
+    [Fact]
+    public async Task Photo_UnreadableIsLoggedButNotSaved()
+    {
+        var repo = new FakeRepo();
+        var outcome = await Photos(repo, new FakeAi { PhotoContent = "{\"readable\": false}" })
+            .ExplainAsync(Caller, "math", Jpeg, "image/jpeg", default);
+
+        Assert.Equal(PhotoOutcomeKind.Unreadable, outcome.Kind);
+        Assert.Empty(repo.SavedPhotos);
+        Assert.Equal(new[] { false }, repo.Calls);
+    }
+
+    [Theory]
+    [InlineData("nije json")]
+    [InlineData("{\"readable\": true, \"expression\": \"2 + 2\", \"steps\": []}")]
+    [InlineData("{\"readable\": true, \"steps\": [{\"title\": \"x\"}]}")]
+    public void PhotoParser_RejectsAnswersWithoutTaskOrSteps(string raw) => Assert.Null(PhotoAnswerParser.Parse(raw));
+
+    [Fact]
+    public void DecodeImage_AcceptsOnlyJpegAndPng()
+    {
+        Assert.Equal("image/jpeg", V2AiController.DecodeImage(Convert.ToBase64String(Jpeg))!.Value.Mime);
+        var png = new byte[] { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0 };
+        Assert.Equal("image/png", V2AiController.DecodeImage(Convert.ToBase64String(png))!.Value.Mime);
+        Assert.Null(V2AiController.DecodeImage(Convert.ToBase64String(new byte[] { 1, 2, 3, 4 })));
+        Assert.Null(V2AiController.DecodeImage("%%%"));
+        Assert.Null(V2AiController.DecodeImage(null));
+    }
+
+    [Fact]
+    public void PhotoSubjects_NatureCoversItsSubjectIds()
+    {
+        Assert.True(PhotoSubjects.Allowed("nature", new short[] { 5 }));
+        Assert.False(PhotoSubjects.Allowed("english", new short[] { 1, 2 }));
+        Assert.True(PhotoSubjects.Allowed("english", null));
     }
 
     private static AskService Service(FakeRepo repo, FakeAi ai) =>

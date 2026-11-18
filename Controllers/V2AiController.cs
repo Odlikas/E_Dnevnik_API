@@ -6,23 +6,33 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace E_Dnevnik_API.Controllers
 {
-    // POST /v2/ai/ask - "Pitaj Josu": Supabase JWT djeteta + pitanje -> Josin odgovor
+    // POST /v2/ai/ask ("Pitaj Josu") i POST /v2/ai/photo ("Slikaj i razumij"): Supabase JWT djeteta
     // namjerno bez [ApiController] da i loš JSON vrati {"error":"bad_request"}
     [Route("v2/ai")]
     public class V2AiController : ControllerBase
     {
         public const int MaxQuestionLength = 500;
 
+        // izrezani dio slike; aplikacija ga smanji na najviše 1600 px
+        public const int MaxImageBytes = 6 * 1024 * 1024;
+
         private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
         private readonly ISupabaseAuthClient _auth;
         private readonly IAskService _ask;
+        private readonly IPhotoService _photo;
         private readonly ILogger<V2AiController> _logger;
 
-        public V2AiController(ISupabaseAuthClient auth, IAskService ask, ILogger<V2AiController> logger)
+        public V2AiController(
+            ISupabaseAuthClient auth,
+            IAskService ask,
+            IPhotoService photo,
+            ILogger<V2AiController> logger
+        )
         {
             _auth = auth;
             _ask = ask;
+            _photo = photo;
             _logger = logger;
         }
 
@@ -32,41 +42,16 @@ namespace E_Dnevnik_API.Controllers
         {
             if (!_ask.IsConfigured || !_auth.IsConfigured)
                 return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.NotConfigured);
+            var (callerId, denied) = await CallerAsync(ct);
+            if (denied is not null)
+                return denied;
 
-            var header = Request.Headers.Authorization.ToString();
-            if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-                return Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized);
-            var token = header["Bearer ".Length..].Trim();
-            if (token.Length == 0)
-                return Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized);
-
-            Guid? callerId;
-            try
-            {
-                callerId = await _auth.GetUserIdAsync(token, ct);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
-            {
-                _logger.LogWarning("[v2/ai] Supabase auth unreachable: {Message}", ex.Message);
-                return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.AuthUnavailable);
-            }
-            if (callerId is null)
-                return Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized);
-
-            AskRequest? body;
-            try
-            {
-                body = await JsonSerializer.DeserializeAsync<AskRequest>(Request.Body, Json, ct);
-            }
-            catch (JsonException)
-            {
-                return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
-            }
+            var body = await ReadAsync<AskRequest>(ct);
             var question = Clean(body?.Question);
             if (question is null)
                 return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
 
-            var outcome = await _ask.AskAsync(callerId.Value, question, ct);
+            var outcome = await _ask.AskAsync(callerId, question, ct);
             return outcome.Kind switch
             {
                 AskOutcomeKind.Ok => Ok(outcome.Response),
@@ -76,11 +61,96 @@ namespace E_Dnevnik_API.Controllers
             };
         }
 
+        [HttpPost("photo")]
+        [RequestSizeLimit(9 * 1024 * 1024)]
+        public async Task<IActionResult> Photo(CancellationToken ct)
+        {
+            if (!_photo.IsConfigured || !_auth.IsConfigured)
+                return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.NotConfigured);
+            var (callerId, denied) = await CallerAsync(ct);
+            if (denied is not null)
+                return denied;
+
+            var body = await ReadAsync<PhotoRequest>(ct);
+            var subject = body?.Subject;
+            var image = DecodeImage(body?.Image);
+            if (subject is null || !PhotoSubjects.All.Contains(subject) || image is null)
+                return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
+
+            var outcome = await _photo.ExplainAsync(callerId, subject, image.Value.Bytes, image.Value.Mime, ct);
+            return outcome.Kind switch
+            {
+                PhotoOutcomeKind.Ok => Ok(outcome.Response),
+                PhotoOutcomeKind.NotAChild => Error(HttpStatusCode.Forbidden, AiErrorCodes.NotAChild),
+                PhotoOutcomeKind.PhotoHelpOff => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.PhotoHelpOff),
+                PhotoOutcomeKind.SubjectNotAllowed => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.SubjectNotAllowed),
+                PhotoOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
+                PhotoOutcomeKind.Unreadable => Error(HttpStatusCode.UnprocessableEntity, PhotoErrorCodes.Unreadable),
+                _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
+            };
+        }
+
         // obrezano pitanje ili null kad je prazno ili predugo
         public static string? Clean(string? question)
         {
             var q = question?.Trim();
             return string.IsNullOrEmpty(q) || q.Length > MaxQuestionLength ? null : q;
+        }
+
+        // base64 JPEG/PNG -> bajtovi i MIME po potpisu datoteke; null za sve ostalo
+        public static (byte[] Bytes, string Mime)? DecodeImage(string? base64)
+        {
+            if (string.IsNullOrEmpty(base64) || base64.Length > MaxImageBytes / 3 * 4 + 4)
+                return null;
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+            }
+            catch (FormatException)
+            {
+                return null;
+            }
+            if (bytes.Length > 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+                return (bytes, "image/jpeg");
+            if (bytes.Length > 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47)
+                return (bytes, "image/png");
+            return null;
+        }
+
+        private async Task<(Guid CallerId, IActionResult? Denied)> CallerAsync(CancellationToken ct)
+        {
+            var header = Request.Headers.Authorization.ToString();
+            if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+                return (default, Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized));
+            var token = header["Bearer ".Length..].Trim();
+            if (token.Length == 0)
+                return (default, Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized));
+            try
+            {
+                var id = await _auth.GetUserIdAsync(token, ct);
+                return id is null
+                    ? (default, Error(HttpStatusCode.Unauthorized, SyncErrorCodes.Unauthorized))
+                    : (id.Value, null);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
+            {
+                _logger.LogWarning("[v2/ai] Supabase auth unreachable: {Message}", ex.Message);
+                return (default, Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.AuthUnavailable));
+            }
+        }
+
+        private async Task<T?> ReadAsync<T>(CancellationToken ct)
+            where T : class
+        {
+            try
+            {
+                return await JsonSerializer.DeserializeAsync<T>(Request.Body, Json, ct);
+            }
+            catch (JsonException)
+            {
+                return null;
+            }
         }
 
         private ObjectResult Error(HttpStatusCode status, string code) =>
