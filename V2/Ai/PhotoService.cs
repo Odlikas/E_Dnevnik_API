@@ -89,7 +89,7 @@ namespace E_Dnevnik_API.V2.Ai
                 new AiCall(
                     asker.FamilyId,
                     "photo",
-                    _ai.Provider,
+                    $"{_ai.Provider}/{completion.Model}",
                     result is not null,
                     1,
                     completion.InputTokens,

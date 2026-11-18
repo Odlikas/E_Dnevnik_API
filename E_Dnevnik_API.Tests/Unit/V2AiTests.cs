@@ -277,6 +277,7 @@ public class V2AiTests
         http.Expect(HttpMethod.Post, "http://127.0.0.1:3001/v1/chat/completions")
             .WithHeaders("Authorization", "Bearer freellmapi-test")
             .WithPartialContent("\"role\":\"system\"")
+            .WithPartialContent("\"model\":\"gemini-3.1-flash-lite\"")
             .Respond(
                 "application/json",
                 "{\"choices\":[{\"message\":{\"content\":\"{\\\"text\\\":\\\"Bok\\\",\\\"steps\\\":[\\\"a\\\"]}\"}}],"
@@ -300,6 +301,29 @@ public class V2AiTests
         var client = new AiChatClient(new Factory(http), Options.Create(new AiOptions { ApiKey = "k" }));
         await Assert.ThrowsAsync<HttpRequestException>(() => client.AskAsync("s", new List<ChatTurn>(), "q", default));
     }
+
+    [Fact]
+    public async Task ChatClient_FallsBackToTheNextModel()
+    {
+        var http = new MockHttpMessageHandler();
+        http.Expect("*").WithPartialContent("\"model\":\"m1\"").Respond(HttpStatusCode.ServiceUnavailable);
+        http.Expect("*")
+            .WithPartialContent("\"model\":\"m2\"")
+            .Respond("application/json", "{\"choices\":[{\"message\":{\"content\":\"{}\"},\"finish_reason\":\"length\"}]}");
+        http.Expect("*")
+            .WithPartialContent("\"model\":\"m3\"")
+            .Respond("application/json", "{\"choices\":[{\"message\":{\"content\":\"Bok\"},\"finish_reason\":\"stop\"}]}");
+        var client = new AiChatClient(new Factory(http), Options.Create(new AiOptions { ApiKey = "k", ChatModels = "m1, auto, m2,m3" }));
+
+        var reply = await client.AskAsync("s", new List<ChatTurn>(), "q", default);
+
+        Assert.Equal(("Bok", "m3"), (reply.Message.Text, reply.Model));
+        http.VerifyNoOutstandingExpectation();
+    }
+
+    [Fact]
+    public void Models_NeverAuto() =>
+        Assert.Equal(new[] { "a", "b" }, AiOptions.Split(" a, auto ,auto:fast, b ,"));
 
     private sealed class Factory(MockHttpMessageHandler handler) : IHttpClientFactory
     {

@@ -37,7 +37,21 @@ namespace E_Dnevnik_API.V2.Ai
         // freellmapi na istom serveru, port samo na 127.0.0.1
         public string BaseUrl { get; set; } = "http://127.0.0.1:3001/v1";
         public string? ApiKey { get; set; }
-        public string Model { get; set; } = "auto";
+        // samo ovi modeli, redom; sljedeći kad prethodni ne odgovori. Nikad "auto": freellmapi bi mogao
+        // odabrati necenzurirane ili roleplay modele, a ovo je aplikacija za djecu.
+        // env: Ai__ChatModels / Ai__VisionModels = popis odvojen zarezima
+        public string ChatModels { get; set; } =
+            "gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-flash-lite,llama-3.3-70b,gemma-4-26b-it";
+        public string VisionModels { get; set; } =
+            "gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-flash-lite,gemma-4-26b-it";
+
+        // jedan pokušaj s jednim modelom
+        public int AttemptSeconds { get; set; } = 25;
+
+        public static IReadOnlyList<string> Split(string models) =>
+            models.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(m => !m.StartsWith("auto", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
         // upisuje se u ai_calls.provider
         public string Provider { get; set; } = "freellmapi";
@@ -57,5 +71,5 @@ namespace E_Dnevnik_API.V2.Ai
 
     public record ChatTurn(bool FromChild, string Text);
 
-    public record AiReply(AskMessage Message, int InputTokens, int OutputTokens);
+    public record AiReply(AskMessage Message, int InputTokens, int OutputTokens, string Model = "");
 }

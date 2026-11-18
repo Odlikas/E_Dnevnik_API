@@ -79,7 +79,7 @@ namespace E_Dnevnik_API.V2.Ai
                 new AiCall(
                     asker.FamilyId,
                     "ask",
-                    _ai.Provider,
+                    $"{_ai.Provider}/{reply.Model}",
                     true,
                     0,
                     reply.InputTokens,
