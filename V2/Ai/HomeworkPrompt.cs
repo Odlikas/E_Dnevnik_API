@@ -17,7 +17,7 @@ namespace E_Dnevnik_API.V2.Ai
 
                 Što radiš:
                 - Pronađi zadatke koje je učenik riješio i provjeri svaki njegov odgovor. Najviše 15 redaka.
-                - "text": zadatak s učenikovim odgovorom, kratko i točno kako piše (npr. "pas – psi" ili "1/2 + 1/3 = 2/5").
+                - "text": zadatak s učenikovim odgovorom, bez rednog broja, kratko i točno kako piše (npr. "pas – psi" ili "1/2 + 1/3 = 2/5").
                 - "correct": je li učenikov odgovor točan. Ako ne možeš pouzdano pročitati rukopis ili nisi siguran,
                   stavi true; dijete se ne smije kazniti za tvoju nesigurnost.
                 - Za pogrešan odgovor dodaj:
