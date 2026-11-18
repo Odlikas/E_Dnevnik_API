@@ -85,7 +85,7 @@ namespace E_Dnevnik_API.V2.Ai
             try
             {
                 completion = await _ai.WriteAsync(
-                    ExplainPrompt.System(help.Grade, help.SchoolLevel, help.ChildName),
+                    ExplainPrompt.System(help.Grade, help.SchoolLevel),
                     instruction,
                     ct
                 );
