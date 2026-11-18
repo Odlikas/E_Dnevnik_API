@@ -89,10 +89,13 @@ public class V2AiTests
         public string WriteContent = ExplainJson;
         public string? WriteInstruction;
 
+        public string? WriteSystem;
+
         public Task<AiCompletion> WriteAsync(string system, string instruction, CancellationToken ct)
         {
             if (Fail)
                 throw new HttpRequestException("down");
+            WriteSystem = system;
             WriteInstruction = instruction;
             return Task.FromResult(new AiCompletion(WriteContent, 400, 300, "m"));
         }
@@ -146,6 +149,7 @@ public class V2AiTests
         Assert.True(note.Sections[2]!["warning"]!.GetValue<bool>());
         Assert.Equal("Objasnio Joso · 3 dijela", detail);
         Assert.Contains("Razlomci", ai.WriteInstruction);
+        Assert.DoesNotContain("Luka", ai.WriteSystem + ai.WriteInstruction);
         Assert.Equal(new[] { true }, calls.Calls);
     }
 
