@@ -68,13 +68,16 @@ namespace E_Dnevnik_API.V2.Push
         public const string HsConsentConfirmed = "hs_consent_confirmed";
         public const string HsConsentDeclined = "hs_consent_declined";
 
+        // dijete je slikalo zadatak (Slikaj i razumij), a roditelj je uključio photo_help_notify; samo roditeljima
+        public const string PhotoTask = "photo_task";
+
         // tipovi za koje znamo napisati tekst; ostali redovi čekaju (ne dira ih se)
         public static readonly IReadOnlyCollection<string> KnownTypes = new[]
         {
             NewGrade, HelpRequest, Tamper, TimeAdded, TimeRequest, TimeDeclined, PhoneSilent,
             GoalProposal, GoalAnswer, FreeDayRequest, FreeDayGiven, FreeDayDeclined, Absence,
             FamilySharingGuide, HsUnlinked, HsParentLinked, HsInviteDeclined, HsConsentConfirmed,
-            HsConsentDeclined,
+            HsConsentDeclined, PhotoTask,
         };
 
         // tipovi koje dobiva samo dijete (roditelji ih ne dobivaju)
@@ -179,6 +182,14 @@ namespace E_Dnevnik_API.V2.Push
                 // D213: bez imena dok details nije uključen
                 var child = details ? rows[0].ChildFirstName?.Trim() : null;
                 return (string.IsNullOrEmpty(child) ? "Dijete treba pomoć" : child + " treba pomoć", OpenApp);
+            }
+            if (rows[0].Type == PhotoTask)
+            {
+                // D213: bez imena i zadatka dok details nije uključen
+                var child = details ? rows[0].ChildFirstName?.Trim() : null;
+                var title = string.IsNullOrEmpty(child) ? "Slikan zadatak" : child + " · slikan zadatak";
+                return (rows.Count > 1 ? $"Slikani zadaci: {rows.Count}" : title,
+                    "Dijete je slikalo zadatak i dobilo objašnjenje. Otvorite Odlikaš.");
             }
             if (rows[0].Type == TimeAdded)
             {

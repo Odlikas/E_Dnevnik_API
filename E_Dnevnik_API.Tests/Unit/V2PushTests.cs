@@ -63,6 +63,18 @@ public class V2PushTests
     }
 
     [Fact]
+    public void PhotoTaskGoesOnlyToParentsWithoutNamesByDefault()
+    {
+        var photo = Grade(type: PushPlanner.PhotoTask, note: null, element: null);
+        var plan = PushPlanner.Plan(new[] { photo }, All, details: false);
+        Assert.Equal(new[] { "mama-fid", "tata-fid" }, plan.Select(p => p.Token));
+        Assert.All(plan, p => Assert.Equal("Slikan zadatak", p.Title));
+        Assert.DoesNotContain("Ema", plan[0].Body);
+        Assert.Equal("photo_task", plan[0].Data["type"]);
+        Assert.Equal("Ema · slikan zadatak", PushPlanner.Plan(new[] { photo }, All, details: true)[0].Title);
+    }
+
+    [Fact]
     public void TamperGoesOnlyToThatParentWithoutNamesByDefault()
     {
         var tamper = Grade(type: PushPlanner.Tamper, note: null, element: null, parent: Mama);

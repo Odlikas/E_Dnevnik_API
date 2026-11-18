@@ -48,13 +48,25 @@ namespace E_Dnevnik_API.V2.Ai
                     if (Text(t["expression"], 200) is { } e && similar.Count < MaxSimilar)
                     {
                         var d = Text(t["difficulty"], 10)?.ToLowerInvariant();
-                        similar.Add(
-                            new JsonObject
-                            {
-                                ["expression"] = e,
-                                ["difficulty"] = d is not null && Difficulties.Contains(d) ? d : Difficulties[similar.Count],
-                            }
-                        );
+                        var item = new JsonObject
+                        {
+                            ["expression"] = e,
+                            ["difficulty"] = d is not null && Difficulties.Contains(d) ? d : Difficulties[similar.Count],
+                        };
+                        // rješenje i tri pogrešna za kviz "Sad ti probaj"; bez rješenja zadatak ostaje samo za čitanje
+                        if (Text(t["answer"], 60) is { } answer)
+                        {
+                            item["answer"] = answer;
+                            var wrong = new JsonArray();
+                            if (t["choices"] is JsonArray c)
+                                foreach (var x in c)
+                                    if (Text(x, 60) is { } w && w != answer && wrong.Count < 3 && !wrong.Any(n => n!.GetValue<string>() == w))
+                                        wrong.Add(w);
+                            item["choices"] = wrong;
+                            if (Text(t["why"], 300) is { } why)
+                                item["why"] = why;
+                        }
+                        similar.Add(item);
                     }
 
             return new PhotoResult(
