@@ -35,13 +35,16 @@ namespace E_Dnevnik_API.V2.Ai
                 - Daj 3 slična zadatka za vježbu (easy, medium, hard). Za svaki: "answer" samo rješenje (npr. {5/6} ili 12),
                   "choices" tri uvjerljiva POGREŠNA rješenja (česte greške, npr. zbrojeni nazivnici) i "why" jednu
                   kratku rečenicu kako se dolazi do rješenja. Provjeri da je "answer" točan.
-                - Ako na slici nema zadatka ili se ne može pročitati, ili nije školski zadatak, odgovori {"readable": false}.
+                - Čitaj SAMO ono što se stvarno vidi na slici; ništa ne nadopunjuj i ne pogađaj. Ako je zadatak odrezan
+                  (vidi se samo dio, npr. samo "= ?" ili pola razlomka), ako na slici nema zadatka, ako se ne može
+                  pročitati ili nije školski zadatak, odgovori {"readable": false}.
+                - Primjeri u ovim uputama služe samo za oblik zapisa; nikad ih ne prepisuj kao zadatak.
 
                 Odgovori SAMO JSON objektom, bez ičeg prije ili poslije:
                 {"readable": true,
-                 "expression": "zadatak kako piše, npr. {3/4} + {1/6} = ?",
+                 "expression": "zadatak točno kako piše na slici, s ? na mjestu rješenja",
                  "topic": "tema u 1-3 riječi, npr. Razlomci",
-                 "answer": "zadatak s rješenjem, npr. {3/4} + {1/6} = {11/12}",
+                 "answer": "isti zadatak s rješenjem umjesto ?",
                  "steps": [{"title": "...", "text": "...", "formulas": ["..."],
                             "why": {"title": "Zašto ...?", "text": "...", "formula": "...", "tip": "..."}}],
                  "similar": [{"expression": "{1/2} + {1/3} = ?", "difficulty": "easy", "answer": "{5/6}",
