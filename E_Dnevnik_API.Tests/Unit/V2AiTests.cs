@@ -85,6 +85,129 @@ public class V2AiTests
             PhotoSystem = system;
             return Task.FromResult(new AiCompletion(PhotoContent, 900, 300));
         }
+
+        public string WriteContent = ExplainJson;
+        public string? WriteInstruction;
+
+        public Task<AiCompletion> WriteAsync(string system, string instruction, CancellationToken ct)
+        {
+            if (Fail)
+                throw new HttpRequestException("down");
+            WriteInstruction = instruction;
+            return Task.FromResult(new AiCompletion(WriteContent, 400, 300, "m"));
+        }
+    }
+
+    private const string ExplainJson = """
+        Evo: {"ok": true, "subject": "math", "title": "Zajednički nazivnik", "topic": "Razlomci",
+         "sections": [{"title": "Što je to?", "lines": ["Broj koji dijele oba nazivnika.", ""]},
+                      {"title": "", "lines": ["bez naslova se odbacuje"]},
+                      {"title": "Primjer", "lines": ["{1/2} + {1/4} = {3/4}"]},
+                      {"title": "Pazi!", "lines": ["Brojnike ne množi bez nazivnika."], "warning": true}],
+         "joso_says": "Možeš ti to!"}
+        """;
+
+    private sealed class FakeExplainRepo : IExplainRepository
+    {
+        public HelpContext? Help = new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Luka", 5, "primary", "free", "Razlomci", null);
+        public ExistingNote? Existing;
+        public int Explained;
+        public readonly List<(ExplainNote Note, string Detail)> Saved = new();
+        public bool IsConfigured => true;
+
+        public Task<HelpContext?> GetContextAsync(Guid parentId, Guid notificationId, CancellationToken ct) => Task.FromResult(Help);
+
+        public Task<ExistingNote?> FindNoteAsync(Guid familyId, string source, CancellationToken ct) => Task.FromResult(Existing);
+
+        public Task<int> CountExplanationsAsync(Guid familyId, DateTimeOffset since, CancellationToken ct) => Task.FromResult(Explained);
+
+        public Task<Guid> SaveNoteAsync(HelpContext help, ExplainNote note, string detail, CancellationToken ct)
+        {
+            Saved.Add((note, detail));
+            return Task.FromResult(Guid.NewGuid());
+        }
+    }
+
+    private static ExplainService Explains(FakeExplainRepo repo, FakeRepo calls, FakeAi ai) =>
+        new(repo, calls, ai, TimeProvider.System, NullLogger<ExplainService>.Instance);
+
+    [Fact]
+    public async Task Explain_FirstIsFreeAndWritesTheNote()
+    {
+        var (repo, calls, ai) = (new FakeExplainRepo(), new FakeRepo(), new FakeAi());
+        var outcome = await Explains(repo, calls, ai).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+
+        Assert.Equal(ExplainOutcomeKind.Ok, outcome.Kind);
+        Assert.True(outcome.Response!.WasFree);
+        Assert.Equal(3, outcome.Response.Steps);
+        var (note, detail) = Assert.Single(repo.Saved);
+        Assert.Equal("Zajednički nazivnik", note.Title);
+        Assert.Equal(1, note.SubjectId);
+        Assert.True(note.Sections[2]!["warning"]!.GetValue<bool>());
+        Assert.Equal("Objasnio Joso · 3 dijela", detail);
+        Assert.Contains("Razlomci", ai.WriteInstruction);
+        Assert.Equal(new[] { true }, calls.Calls);
+    }
+
+    [Fact]
+    public async Task Explain_FreePlanNeedsPremiumAfterTheFirst()
+    {
+        var (repo, ai) = (new FakeExplainRepo { Explained = 1 }, new FakeAi());
+        var outcome = await Explains(repo, new FakeRepo(), ai).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+
+        Assert.Equal(ExplainOutcomeKind.PremiumRequired, outcome.Kind);
+        Assert.Null(ai.WriteInstruction);
+    }
+
+    [Fact]
+    public async Task Explain_PremiumIsNotFreeAndHasADailyCap()
+    {
+        var repo = new FakeExplainRepo();
+        repo.Help = repo.Help! with { Plan = "premium" };
+        repo.Explained = 3;
+        var ok = await Explains(repo, new FakeRepo(), new FakeAi()).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+        Assert.False(ok.Response!.WasFree);
+
+        repo.Explained = ExplainService.PremiumDailyCap;
+        var capped = await Explains(repo, new FakeRepo(), new FakeAi()).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+        Assert.Equal(ExplainOutcomeKind.LimitReached, capped.Kind);
+    }
+
+    [Fact]
+    public async Task Explain_SecondTapReturnsTheSameNote()
+    {
+        var id = Guid.NewGuid();
+        var (repo, ai) = (new FakeExplainRepo { Existing = new ExistingNote(id, "Razlomci", 2), Explained = 1 }, new FakeAi());
+        var outcome = await Explains(repo, new FakeRepo(), ai).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+
+        Assert.Equal(id, outcome.Response!.NoteId);
+        Assert.Null(ai.WriteInstruction);
+        Assert.Empty(repo.Saved);
+    }
+
+    [Fact]
+    public async Task Explain_OtherFamilyOrNothingToGoOn()
+    {
+        var notFound = await Explains(new FakeExplainRepo { Help = null }, new FakeRepo(), new FakeAi())
+            .ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+        Assert.Equal(ExplainOutcomeKind.NotFound, notFound.Kind);
+
+        var repo = new FakeExplainRepo();
+        repo.Help = repo.Help! with { Topic = null };
+        var nothing = await Explains(repo, new FakeRepo(), new FakeAi()).ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+        Assert.Equal(ExplainOutcomeKind.NothingToExplain, nothing.Kind);
+    }
+
+    [Fact]
+    public async Task Explain_RefusalIsLoggedButNotSaved()
+    {
+        var (repo, calls) = (new FakeExplainRepo(), new FakeRepo());
+        var outcome = await Explains(repo, calls, new FakeAi { WriteContent = """{"ok": false}""" })
+            .ExplainAsync(Guid.NewGuid(), Guid.NewGuid(), default);
+
+        Assert.Equal(ExplainOutcomeKind.AiUnavailable, outcome.Kind);
+        Assert.Empty(repo.Saved);
+        Assert.Equal(new[] { false }, calls.Calls);
     }
 
     private const string PhotoJson = """
