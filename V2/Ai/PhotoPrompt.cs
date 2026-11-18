@@ -32,7 +32,9 @@ namespace E_Dnevnik_API.V2.Ai
                 - Svaki korak: kratak naslov ("Proširi oba razlomka"), po želji jedna-dvije rečenice "text" i
                   "formulas" (svaka formula u svom retku, npr. "{3/4} = {9/12} (× 3)").
                 - Za koraka gdje dijete može pitati "zašto?" dodaj "why" s kratkim objašnjenjem i primjerom iz svakodnevice u "tip".
-                - Daj 3 slična zadatka za vježbu (easy, medium, hard), samo zadatak bez rješenja.
+                - Daj 3 slična zadatka za vježbu (easy, medium, hard). Za svaki: "answer" samo rješenje (npr. {5/6} ili 12),
+                  "choices" tri uvjerljiva POGREŠNA rješenja (česte greške, npr. zbrojeni nazivnici) i "why" jednu
+                  kratku rečenicu kako se dolazi do rješenja. Provjeri da je "answer" točan.
                 - Ako na slici nema zadatka ili se ne može pročitati, ili nije školski zadatak, odgovori {"readable": false}.
 
                 Odgovori SAMO JSON objektom, bez ičeg prije ili poslije:
@@ -42,7 +44,8 @@ namespace E_Dnevnik_API.V2.Ai
                  "answer": "zadatak s rješenjem, npr. {3/4} + {1/6} = {11/12}",
                  "steps": [{"title": "...", "text": "...", "formulas": ["..."],
                             "why": {"title": "Zašto ...?", "text": "...", "formula": "...", "tip": "..."}}],
-                 "similar": [{"expression": "...", "difficulty": "easy"}]}
+                 "similar": [{"expression": "{1/2} + {1/3} = ?", "difficulty": "easy", "answer": "{5/6}",
+                              "choices": ["{2/5}", "{2/6}", "{1/6}"], "why": "Proširi na šestine: {3/6} + {2/6} = {5/6}."}]}
                 "text", "formulas" i "why" mogu izostati.
                 """;
         }

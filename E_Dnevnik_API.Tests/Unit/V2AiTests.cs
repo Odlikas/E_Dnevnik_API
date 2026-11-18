@@ -220,7 +220,8 @@ public class V2AiTests
                     "why": {"title": "Zašto 12?", "text": "Najmanji je.", "formula": "4 · 3 = 12", "tip": "Kao pizza."}},
                    {"title": "", "text": "bez naslova se odbacuje"},
                    {"title": "Zbroji", "formulas": ["{9/12} + {2/12} = {11/12}"]}],
-         "similar": [{"expression": "{1/2} + {1/4} = ?", "difficulty": "easy"}, {"expression": "{2/3} + {1/6} = ?", "difficulty": "weird"}]}
+         "similar": [{"expression": "{1/2} + {1/4} = ?", "difficulty": "easy", "answer": "{3/4}",
+                      "choices": ["{2/6}", "{3/4}", "{2/6}", "{1/8}", "{2/8}"], "why": "Proširi na četvrtine."}, {"expression": "{2/3} + {1/6} = ?", "difficulty": "weird"}]}
         """;
 
     private static PhotoService Photos(FakeRepo repo, FakeAi ai) =>
@@ -239,6 +240,12 @@ public class V2AiTests
         Assert.Equal("Razlomci", outcome.Response!.Topic);
         Assert.Equal(2, outcome.Response.Steps.Count);
         Assert.Equal("medium", outcome.Response.SimilarTasks[1]!["difficulty"]!.GetValue<string>());
+        // the right answer and up to three different wrong ones; a task without an answer stays read-only
+        var easy = outcome.Response.SimilarTasks[0]!;
+        Assert.Equal("{3/4}", easy["answer"]!.GetValue<string>());
+        Assert.Equal(new[] { "{2/6}", "{1/8}", "{2/8}" }, easy["choices"]!.AsArray().Select(c => c!.GetValue<string>()));
+        Assert.Equal("Proširi na četvrtine.", easy["why"]!.GetValue<string>());
+        Assert.Null(outcome.Response.SimilarTasks[1]!["answer"]);
         Assert.Single(repo.SavedPhotos);
         Assert.Equal(("photo", 1, true), (repo.Logged[0].Feature, repo.Logged[0].Images, repo.Logged[0].Ok));
         Assert.Contains("Matematika", ai.PhotoSystem);
