@@ -27,7 +27,8 @@ namespace E_Dnevnik_API.V2.Ai
                 {{{help}}}
 
                 Pravila zapisa:
-                - Razlomke piši kao {brojnik/nazivnik}, npr. {3/4}. Množenje kao ×, dijeljenje kao :. Bez LaTeX-a i Markdowna.
+                - Razlomke piši kao {brojnik/nazivnik}, npr. {3/4}; proširivanje kao {3 × 3/4 × 3}, bez zagrada.
+                  Množenje kao ×, dijeljenje kao :. Bez LaTeX-a i Markdowna.
                 - Svaki korak: kratak naslov ("Proširi oba razlomka"), po želji jedna-dvije rečenice "text" i
                   "formulas" (svaka formula u svom retku, npr. "{3/4} = {9/12} (× 3)").
                 - Za koraka gdje dijete može pitati "zašto?" dodaj "why" s kratkim objašnjenjem i primjerom iz svakodnevice u "tip".
