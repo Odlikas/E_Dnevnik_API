@@ -204,6 +204,8 @@ builder.Services.AddScoped<E_Dnevnik_API.V2.Ai.IAskService, E_Dnevnik_API.V2.Ai.
 builder.Services.AddScoped<E_Dnevnik_API.V2.Ai.IPhotoService, E_Dnevnik_API.V2.Ai.PhotoService>();
 builder.Services.AddSingleton<E_Dnevnik_API.V2.Ai.IExplainRepository, E_Dnevnik_API.V2.Ai.ExplainRepository>();
 builder.Services.AddScoped<E_Dnevnik_API.V2.Ai.IExplainService, E_Dnevnik_API.V2.Ai.ExplainService>();
+builder.Services.AddSingleton<E_Dnevnik_API.V2.Ai.IHomeworkRepository, E_Dnevnik_API.V2.Ai.HomeworkRepository>();
+builder.Services.AddScoped<E_Dnevnik_API.V2.Ai.IHomeworkService, E_Dnevnik_API.V2.Ai.HomeworkService>();
 
 // --- v2: push obavijesti (public.notifications -> FCM, projekt odlikas-v2) ---
 // bez Supabasea ili FIREBASE_V2_CREDENTIALS_FILE / FIREBASE_V2_SERVICE_ACCOUNT_JSON radnik se samo ugasi

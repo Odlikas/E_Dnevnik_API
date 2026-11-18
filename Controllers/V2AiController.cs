@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace E_Dnevnik_API.Controllers
 {
     // POST /v2/ai/ask ("Pitaj Josu") i POST /v2/ai/photo ("Slikaj i razumij"): Supabase JWT djeteta;
-    // POST /v2/ai/explain ("Objasni Luki"): JWT roditelja
+    // POST /v2/ai/homework ("Provjera zadaće"): JWT djeteta; POST /v2/ai/explain ("Objasni Luki"): JWT roditelja
     // namjerno bez [ApiController] da i loš JSON vrati {"error":"bad_request"}
     [Route("v2/ai")]
     public class V2AiController : ControllerBase
@@ -23,6 +23,7 @@ namespace E_Dnevnik_API.Controllers
         private readonly IAskService _ask;
         private readonly IPhotoService _photo;
         private readonly IExplainService _explain;
+        private readonly IHomeworkService _homework;
         private readonly ILogger<V2AiController> _logger;
 
         public V2AiController(
@@ -30,9 +31,11 @@ namespace E_Dnevnik_API.Controllers
             IAskService ask,
             IPhotoService photo,
             IExplainService explain,
+            IHomeworkService homework,
             ILogger<V2AiController> logger
         )
         {
+            _homework = homework;
             _explain = explain;
             _auth = auth;
             _ask = ask;
@@ -90,6 +93,39 @@ namespace E_Dnevnik_API.Controllers
                 PhotoOutcomeKind.SubjectNotAllowed => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.SubjectNotAllowed),
                 PhotoOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
                 PhotoOutcomeKind.Unreadable => Error(HttpStatusCode.UnprocessableEntity, PhotoErrorCodes.Unreadable),
+                _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
+            };
+        }
+
+        // "Provjera zadaće": 1 do 5 stranica; aplikacija ih šalje sive, najviše 1280 px
+        [HttpPost("homework")]
+        [RequestSizeLimit(24 * 1024 * 1024)]
+        public async Task<IActionResult> Homework(CancellationToken ct)
+        {
+            if (!_homework.IsConfigured || !_auth.IsConfigured)
+                return Error(HttpStatusCode.ServiceUnavailable, SyncErrorCodes.NotConfigured);
+            var (callerId, denied) = await CallerAsync(ct);
+            if (denied is not null)
+                return denied;
+
+            var body = await ReadAsync<HomeworkRequest>(ct);
+            if (body?.Pages is not { Count: > 0 and <= HomeworkService.MaxPages } raw)
+                return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
+            var pages = new List<(byte[] Bytes, string Mime)>();
+            foreach (var page in raw)
+            {
+                if (DecodeImage(page) is not { } image)
+                    return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
+                pages.Add(image);
+            }
+
+            var outcome = await _homework.CheckAsync(callerId, pages, ct);
+            return outcome.Kind switch
+            {
+                HomeworkOutcomeKind.Ok => Ok(outcome.Response),
+                HomeworkOutcomeKind.NotAChild => Error(HttpStatusCode.Forbidden, AiErrorCodes.NotAChild),
+                HomeworkOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
+                HomeworkOutcomeKind.Unreadable => Error(HttpStatusCode.UnprocessableEntity, HomeworkErrorCodes.Unreadable),
                 _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
             };
         }
