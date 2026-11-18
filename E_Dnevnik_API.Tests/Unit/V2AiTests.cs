@@ -334,6 +334,14 @@ public class V2AiTests
     public void Homework_HintRevealsAnswer(string hint, string answer, bool reveals) =>
         Assert.Equal(reveals, HomeworkAnswerParser.Reveals(hint, answer));
 
+    [Theory]
+    [InlineData("4. čovjek – čovjeci", "čovjek – čovjeci")]
+    [InlineData("12) 3 · 4 = 12", "3 · 4 = 12")]
+    [InlineData("1/2 + 1/4 = 2/6", "1/2 + 1/4 = 2/6")]
+    [InlineData("3.5 + 1 = 4.5", "3.5 + 1 = 4.5")]
+    public void Homework_TextWithoutTheTaskNumber(string text, string expected) =>
+        Assert.Equal(expected, HomeworkAnswerParser.WithoutNumber(text));
+
     [Fact]
     public void Homework_NormMatchesTheDatabase()
     {

@@ -35,7 +35,7 @@ namespace E_Dnevnik_API.V2.Ai
             {
                 if (lines.Count == MaxLines)
                     break;
-                var text = Text(l["text"], 200);
+                var text = WithoutNumber(Text(l["text"], 200));
                 if (text is null)
                     continue;
                 // broj kao na stranici; bez njega ili ponovljen = sljedeći slobodan
@@ -64,7 +64,7 @@ namespace E_Dnevnik_API.V2.Ai
                         number,
                         text,
                         false,
-                        Text(l["prompt"], 150) ?? "",
+                        WithoutNumber(Text(l["prompt"], 150)) ?? "",
                         Text(l["answer_hint"], 60) ?? "",
                         hints,
                         answer,
@@ -94,6 +94,15 @@ namespace E_Dnevnik_API.V2.Ai
                 return false;
             var h = hint.Replace("{", "").Replace("}", "");
             return Regex.IsMatch(h, $@"(?<![\p{{L}}\p{{N}}]){Regex.Escape(a)}(?![\p{{L}}\p{{N}}])", RegexOptions.IgnoreCase);
+        }
+
+        // "4. čovjek – čovjeci" -> "čovjek – čovjeci"; aplikacija sama piše broj ispred
+        public static string? WithoutNumber(string? s)
+        {
+            if (s is null)
+                return null;
+            var t = Regex.Replace(s, @"^\s*\d{1,3}\s*[.)]\s+", "");
+            return t.Length == 0 ? s : t;
         }
 
         private static int Next(HashSet<int> used)
