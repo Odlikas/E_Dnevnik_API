@@ -58,7 +58,7 @@ namespace E_Dnevnik_API.Controllers
             if (question is null)
                 return Error(HttpStatusCode.BadRequest, SyncErrorCodes.BadRequest);
 
-            var outcome = await _ask.AskAsync(callerId, question, ct);
+            var outcome = await _ask.AskAsync(callerId, question, CleanTask(body?.Task), ct);
             return outcome.Kind switch
             {
                 AskOutcomeKind.Ok => Ok(outcome.Response),
@@ -162,6 +162,27 @@ namespace E_Dnevnik_API.Controllers
         {
             var q = question?.Trim();
             return string.IsNullOrEmpty(q) || q.Length > MaxQuestionLength ? null : q;
+        }
+
+        // zadatak iz kviza, skraćen; bez teksta zadatka nema ni zadatka
+        public static AskTask? CleanTask(AskTask? task)
+        {
+            static string? Cut(string? s, int max)
+            {
+                var t = s?.Trim();
+                return string.IsNullOrEmpty(t) ? null : t.Length > max ? t[..max] : t;
+            }
+
+            var prompt = Cut(task?.Prompt, 800);
+            if (prompt is null)
+                return null;
+            return new AskTask
+            {
+                Prompt = prompt,
+                Choices = (task!.Choices ?? new()).Select(c => Cut(c, 200)).OfType<string>().Take(8).ToList(),
+                Given = Cut(task.Given, 200),
+                Answer = Cut(task.Answer, 200),
+            };
         }
 
         // base64 JPEG/PNG -> bajtovi i MIME po potpisu datoteke; null za sve ostalo

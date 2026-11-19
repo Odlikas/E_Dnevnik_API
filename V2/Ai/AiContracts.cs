@@ -6,6 +6,18 @@ namespace E_Dnevnik_API.V2.Ai
     public class AskRequest
     {
         public string? Question { get; set; }
+
+        // zadatak iz kviza kad dijete otvori Josu s "Trebaš pomoć?"; inače null
+        public AskTask? Task { get; set; }
+    }
+
+    // pitanje iz kviza: Answer i Given samo nakon što je dijete odgovorilo
+    public class AskTask
+    {
+        public string? Prompt { get; set; }
+        public List<string>? Choices { get; set; }
+        public string? Given { get; set; }
+        public string? Answer { get; set; }
     }
 
     // jedna Josina poruka; razlomci kao {1/2}
