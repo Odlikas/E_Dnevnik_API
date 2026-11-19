@@ -63,6 +63,7 @@ public class V2AiTests
         public bool Fail;
         public IReadOnlyList<ChatTurn>? History;
         public string? System;
+        public string? Question;
         public bool IsConfigured => true;
         public string Provider => "test";
 
@@ -72,6 +73,7 @@ public class V2AiTests
                 throw new HttpRequestException("down");
             System = system;
             History = history;
+            Question = question;
             return Task.FromResult(new AiReply(new AskMessage { Text = "Evo:", Steps = { "Korak" } }, 10, 5));
         }
 
@@ -451,7 +453,7 @@ public class V2AiTests
     {
         var repo = new FakeRepo { Asked = 2 };
         var ai = new FakeAi();
-        var outcome = await Service(repo, ai).AskAsync(Caller, "Kako zbrojiti razlomke?", default);
+        var outcome = await Service(repo, ai).AskAsync(Caller, "Kako zbrojiti razlomke?", null, default);
 
         Assert.Equal(AskOutcomeKind.Ok, outcome.Kind);
         Assert.Equal("Evo:", outcome.Response!.Messages.Single().Text);
@@ -463,11 +465,47 @@ public class V2AiTests
     }
 
     [Fact]
+    public async Task Ask_FromQuizSendsTheTaskButHidesTheAnswerUntilAnswered()
+    {
+        var repo = new FakeRepo();
+        var ai = new FakeAi();
+        var task = new AskTask { Prompt = "Koliko je 3/4 - 1/8?", Choices = new() { "5/8", "1/2" } };
+        await Service(repo, ai).AskAsync(Caller, "Pomozi mi s ovim zadatkom.", task, default);
+
+        Assert.Contains("Koliko je 3/4 - 1/8?", ai.Question);
+        Assert.Contains("Ponuđeni odgovori: 5/8; 1/2", ai.Question);
+        Assert.Contains("NE reci točan odgovor", ai.Question);
+        Assert.EndsWith("Pitanje djeteta: Pomozi mi s ovim zadatkom.", ai.Question);
+        Assert.Equal("Pomozi mi s ovim zadatkom.", repo.Saved.Single().Question);
+
+        task.Given = "1/2";
+        task.Answer = "5/8";
+        await Service(new FakeRepo(), ai).AskAsync(Caller, "Zašto?", task, default);
+        Assert.Contains("Dijete je odgovorilo: 1/2", ai.Question);
+        Assert.Contains("Točan odgovor je: 5/8", ai.Question);
+        Assert.DoesNotContain("NE reci", ai.Question);
+    }
+
+    [Fact]
+    public void CleanTask_NeedsAPromptAndCutsTheRest()
+    {
+        Assert.Null(V2AiController.CleanTask(null));
+        Assert.Null(V2AiController.CleanTask(new AskTask { Prompt = "  " }));
+        var t = V2AiController.CleanTask(
+            new AskTask { Prompt = new string('a', 900), Choices = Enumerable.Repeat(" b ", 10).Append("").ToList() }
+        )!;
+        Assert.Equal(800, t.Prompt!.Length);
+        Assert.Equal(8, t.Choices!.Count);
+        Assert.All(t.Choices, c => Assert.Equal("b", c));
+        Assert.Null(t.Answer);
+    }
+
+    [Fact]
     public async Task Ask_StopsAtTheFreeLimitWithoutCallingTheModel()
     {
         var repo = new FakeRepo { Asked = 5 };
         var ai = new FakeAi();
-        var outcome = await Service(repo, ai).AskAsync(Caller, "Pitanje", default);
+        var outcome = await Service(repo, ai).AskAsync(Caller, "Pitanje", null, default);
 
         Assert.Equal(AskOutcomeKind.LimitReached, outcome.Kind);
         Assert.Null(ai.History);
@@ -478,10 +516,10 @@ public class V2AiTests
     public async Task Ask_PremiumHasNoCountButAHighCap()
     {
         var premium = Free with { Plan = "premium" };
-        var ok = await Service(new FakeRepo { Asker = premium, Asked = 20 }, new FakeAi()).AskAsync(Caller, "x", default);
+        var ok = await Service(new FakeRepo { Asker = premium, Asked = 20 }, new FakeAi()).AskAsync(Caller, "x", null, default);
         Assert.Null(ok.Response!.QuestionsLeft);
 
-        var capped = await Service(new FakeRepo { Asker = premium, Asked = 50 }, new FakeAi()).AskAsync(Caller, "x", default);
+        var capped = await Service(new FakeRepo { Asker = premium, Asked = 50 }, new FakeAi()).AskAsync(Caller, "x", null, default);
         Assert.Equal(AskOutcomeKind.LimitReached, capped.Kind);
     }
 
@@ -489,7 +527,7 @@ public class V2AiTests
     public async Task Ask_FailedModelIsLoggedButNotSavedOrCounted()
     {
         var repo = new FakeRepo();
-        var outcome = await Service(repo, new FakeAi { Fail = true }).AskAsync(Caller, "x", default);
+        var outcome = await Service(repo, new FakeAi { Fail = true }).AskAsync(Caller, "x", null, default);
 
         Assert.Equal(AskOutcomeKind.AiUnavailable, outcome.Kind);
         Assert.Empty(repo.Saved);
@@ -499,7 +537,7 @@ public class V2AiTests
     [Fact]
     public async Task Ask_ParentAccountIsNotAChild()
     {
-        var outcome = await Service(new FakeRepo { Asker = null }, new FakeAi()).AskAsync(Caller, "x", default);
+        var outcome = await Service(new FakeRepo { Asker = null }, new FakeAi()).AskAsync(Caller, "x", null, default);
         Assert.Equal(AskOutcomeKind.NotAChild, outcome.Kind);
     }
 

@@ -16,7 +16,7 @@ namespace E_Dnevnik_API.V2.Ai
     public interface IAskService
     {
         bool IsConfigured { get; }
-        Task<AskOutcome> AskAsync(Guid authUserId, string question, CancellationToken ct);
+        Task<AskOutcome> AskAsync(Guid authUserId, string question, AskTask? task, CancellationToken ct);
     }
 
     // "Pitaj Josu": limit -> model -> upis pitanja i odgovora; neuspjelo pitanje se ne broji
@@ -48,7 +48,7 @@ namespace E_Dnevnik_API.V2.Ai
 
         public bool IsConfigured => _repo.IsConfigured && _ai.IsConfigured;
 
-        public async Task<AskOutcome> AskAsync(Guid authUserId, string question, CancellationToken ct)
+        public async Task<AskOutcome> AskAsync(Guid authUserId, string question, AskTask? task, CancellationToken ct)
         {
             var asker = await _repo.GetAskerAsync(authUserId, ct);
             if (asker is null)
@@ -65,7 +65,12 @@ namespace E_Dnevnik_API.V2.Ai
             AiReply reply;
             try
             {
-                reply = await _ai.AskAsync(JosoPrompt.System(asker.Grade, asker.SchoolLevel), history, question, ct);
+                reply = await _ai.AskAsync(
+                    JosoPrompt.System(asker.Grade, asker.SchoolLevel),
+                    history,
+                    JosoPrompt.WithTask(question, task),
+                    ct
+                );
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !ct.IsCancellationRequested)
             {

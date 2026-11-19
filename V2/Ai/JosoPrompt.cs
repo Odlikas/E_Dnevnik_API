@@ -3,6 +3,33 @@ namespace E_Dnevnik_API.V2.Ai
     // upute modelu za "Pitaj Josu"; ime djeteta se namjerno ne šalje
     public static class JosoPrompt
     {
+        // pitanje djeteta uz zadatak iz kviza na kojem je; prije odgovora Joso ne smije otkriti rješenje
+        public static string WithTask(string question, AskTask? task)
+        {
+            if (task?.Prompt is null)
+                return question;
+            var lines = new List<string> { "Dijete sada rješava ovaj zadatak u kvizu:", task.Prompt };
+            if (task.Choices is { Count: > 0 } choices)
+                lines.Add("Ponuđeni odgovori: " + string.Join("; ", choices));
+            if (task.Answer is null)
+            {
+                lines.Add(
+                    "Dijete još nije odgovorilo. NE reci točan odgovor ni koji je ponuđeni odgovor točan; "
+                        + "vodi ga koracima da samo dođe do rješenja."
+                );
+            }
+            else
+            {
+                if (task.Given is not null)
+                    lines.Add($"Dijete je odgovorilo: {task.Given}");
+                lines.Add($"Točan odgovor je: {task.Answer}");
+                lines.Add("Objasni korak po korak kako se dođe do točnog odgovora.");
+            }
+            lines.Add("");
+            lines.Add("Pitanje djeteta: " + question);
+            return string.Join("\n", lines);
+        }
+
         public static string System(short? grade, string? schoolLevel)
         {
             var who = (schoolLevel, grade) switch
