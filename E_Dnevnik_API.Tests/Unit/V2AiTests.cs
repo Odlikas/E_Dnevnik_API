@@ -577,6 +577,23 @@ public class V2AiTests
     public void Clean_RejectsTooLong() => Assert.Null(V2AiController.Clean(new string('a', 501)));
 
     [Fact]
+    public async Task Ask_RefusedWithoutConsent()
+    {
+        var ai = new FakeAi();
+        var outcome = await Service(new FakeRepo { Asker = Free with { AiAllowed = false } }, ai).AskAsync(Caller, "x", null, default);
+        Assert.Equal(AskOutcomeKind.AiNotAllowed, outcome.Kind);
+    }
+
+    [Fact]
+    public async Task Homework_RefusedWithoutConsent()
+    {
+        var pages = new List<(byte[], string)> { (new byte[] { 1 }, "image/png") };
+        var outcome = await Homework(new FakeRepo { Asker = Free with { AiAllowed = false } }, new FakeHomeworkRepo(), new FakeAi())
+            .CheckAsync(Caller, pages, default);
+        Assert.Equal(HomeworkOutcomeKind.AiNotAllowed, outcome.Kind);
+    }
+
+    [Fact]
     public void Options_NoGoogleModels()
     {
         var o = new AiOptions();

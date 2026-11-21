@@ -40,6 +40,7 @@ namespace E_Dnevnik_API.V2.Ai
     {
         public const string LimitReached = "limit_reached";
         public const string NotAChild = "not_a_child";
+        public const string AiNotAllowed = "ai_not_allowed";
         public const string AiUnavailable = "ai_unavailable";
     }
 
@@ -77,8 +78,9 @@ namespace E_Dnevnik_API.V2.Ai
         public int PremiumQuestionsPerDay { get; set; } = 50;
     }
 
-    // dijete koje pita; Plan je families.plan ('free' | 'premium')
-    public record Asker(Guid ChildId, Guid FamilyId, short? Grade, string? SchoolLevel, string Plan)
+    // dijete koje pita; Plan je families.plan ('free' | 'premium'); AiAllowed = children.ai_allowed is true
+    // (roditelj ili srednjoškolac pristao, D439; null = nitko još nije odlučio)
+    public record Asker(Guid ChildId, Guid FamilyId, short? Grade, string? SchoolLevel, string Plan, bool AiAllowed = true)
     {
         public bool Premium => Plan == "premium";
     }

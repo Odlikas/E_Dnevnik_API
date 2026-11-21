@@ -6,6 +6,7 @@ namespace E_Dnevnik_API.V2.Ai
     {
         Ok,
         NotAChild,
+        AiNotAllowed,
         LimitReached,
         Unreadable,
         AiUnavailable,
@@ -58,6 +59,8 @@ namespace E_Dnevnik_API.V2.Ai
             var asker = await _ai.GetAskerAsync(authUserId, ct);
             if (asker is null)
                 return new HomeworkOutcome(HomeworkOutcomeKind.NotAChild);
+            if (!asker.AiAllowed)
+                return new HomeworkOutcome(HomeworkOutcomeKind.AiNotAllowed);
             var taken = await _repo.CountChecksAsync(asker.ChildId, AskDay.StartOf(_time.GetUtcNow()), ct);
             if (taken >= HardDailyCap)
                 return new HomeworkOutcome(HomeworkOutcomeKind.LimitReached);

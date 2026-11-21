@@ -6,6 +6,7 @@ namespace E_Dnevnik_API.V2.Ai
     {
         Ok,
         NotAChild,
+        AiNotAllowed,
         PhotoHelpOff,
         SubjectNotAllowed,
         LimitReached,
@@ -53,6 +54,8 @@ namespace E_Dnevnik_API.V2.Ai
             var asker = await _repo.GetAskerAsync(authUserId, ct);
             if (asker is null)
                 return new PhotoOutcome(PhotoOutcomeKind.NotAChild);
+            if (!asker.AiAllowed)
+                return new PhotoOutcome(PhotoOutcomeKind.AiNotAllowed);
             var rules = await _repo.GetPhotoRulesAsync(asker.ChildId, ct);
             if (!rules.Enabled)
                 return new PhotoOutcome(PhotoOutcomeKind.PhotoHelpOff);
