@@ -52,10 +52,12 @@ namespace E_Dnevnik_API.V2.Ai
         // samo ovi modeli, redom; sljedeći kad prethodni ne odgovori. Nikad "auto": freellmapi bi mogao
         // odabrati necenzurirane ili roleplay modele, a ovo je aplikacija za djecu.
         // env: Ai__ChatModels / Ai__VisionModels = popis odvojen zarezima
+        // Bez Googleovih modela (Gemini, Gemma): besplatni paket nije za korisnike u EU i uči na podacima (D440).
+        // freellmapi isti model zove kod više pružatelja (Groq, OVH), ali nikad ne prelazi na drugi model.
         public string ChatModels { get; set; } =
-            "gemini-3.1-flash-lite,gemini-3-flash-preview,gemini-flash-lite,llama-3.3-70b,gemma-4-26b-it";
+            "qwen3.8-27b,gpt-oss-120b,mistral-small-3.2-24b,llama-3.3-70b";
         public string VisionModels { get; set; } =
-            "gemini-3-flash-preview,gemini-3.1-flash-lite,gemini-3.5-flash-lite,gemini-flash-lite,gemma-4-26b-it";
+            "qwen3.8-27b,qwen2.5-vl-72b";
 
         // jedan pokušaj s jednim modelom
         public int AttemptSeconds { get; set; } = 25;
