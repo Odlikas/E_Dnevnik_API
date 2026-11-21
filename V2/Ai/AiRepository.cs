@@ -42,7 +42,7 @@ namespace E_Dnevnik_API.V2.Ai
         {
             await using var cmd = Db.CreateCommand(
                 """
-                select c.id, c.family_id, c.grade, c.school_level::text, f.plan::text
+                select c.id, c.family_id, c.grade, c.school_level::text, f.plan::text, coalesce(c.ai_allowed, false)
                 from public.children c join public.families f on f.id = c.family_id
                 where c.auth_user_id = $1 and c.deleted_at is null
                 limit 1
@@ -57,7 +57,8 @@ namespace E_Dnevnik_API.V2.Ai
                 r.GetGuid(1),
                 r.IsDBNull(2) ? null : r.GetInt16(2),
                 r.IsDBNull(3) ? null : r.GetString(3),
-                r.IsDBNull(4) ? "free" : r.GetString(4)
+                r.IsDBNull(4) ? "free" : r.GetString(4),
+                r.GetBoolean(5)
             );
         }
 

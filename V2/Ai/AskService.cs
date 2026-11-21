@@ -7,6 +7,7 @@ namespace E_Dnevnik_API.V2.Ai
     {
         Ok,
         NotAChild,
+        AiNotAllowed,
         LimitReached,
         AiUnavailable,
     }
@@ -53,6 +54,8 @@ namespace E_Dnevnik_API.V2.Ai
             var asker = await _repo.GetAskerAsync(authUserId, ct);
             if (asker is null)
                 return new AskOutcome(AskOutcomeKind.NotAChild);
+            if (!asker.AiAllowed)
+                return new AskOutcome(AskOutcomeKind.AiNotAllowed);
 
             var since = AskDay.StartOf(_time.GetUtcNow());
             var limit = asker.Premium ? _options.PremiumQuestionsPerDay : _options.FreeQuestionsPerDay;

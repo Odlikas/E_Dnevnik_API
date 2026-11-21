@@ -63,6 +63,7 @@ namespace E_Dnevnik_API.Controllers
             {
                 AskOutcomeKind.Ok => Ok(outcome.Response),
                 AskOutcomeKind.NotAChild => Error(HttpStatusCode.Forbidden, AiErrorCodes.NotAChild),
+                AskOutcomeKind.AiNotAllowed => Error(HttpStatusCode.Forbidden, AiErrorCodes.AiNotAllowed),
                 AskOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
                 _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
             };
@@ -89,6 +90,7 @@ namespace E_Dnevnik_API.Controllers
             {
                 PhotoOutcomeKind.Ok => Ok(outcome.Response),
                 PhotoOutcomeKind.NotAChild => Error(HttpStatusCode.Forbidden, AiErrorCodes.NotAChild),
+                PhotoOutcomeKind.AiNotAllowed => Error(HttpStatusCode.Forbidden, AiErrorCodes.AiNotAllowed),
                 PhotoOutcomeKind.PhotoHelpOff => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.PhotoHelpOff),
                 PhotoOutcomeKind.SubjectNotAllowed => Error(HttpStatusCode.Forbidden, PhotoErrorCodes.SubjectNotAllowed),
                 PhotoOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
@@ -124,6 +126,7 @@ namespace E_Dnevnik_API.Controllers
             {
                 HomeworkOutcomeKind.Ok => Ok(outcome.Response),
                 HomeworkOutcomeKind.NotAChild => Error(HttpStatusCode.Forbidden, AiErrorCodes.NotAChild),
+                HomeworkOutcomeKind.AiNotAllowed => Error(HttpStatusCode.Forbidden, AiErrorCodes.AiNotAllowed),
                 HomeworkOutcomeKind.LimitReached => Error(HttpStatusCode.TooManyRequests, AiErrorCodes.LimitReached),
                 HomeworkOutcomeKind.Unreadable => Error(HttpStatusCode.UnprocessableEntity, HomeworkErrorCodes.Unreadable),
                 _ => Error(HttpStatusCode.ServiceUnavailable, AiErrorCodes.AiUnavailable),
