@@ -577,13 +577,21 @@ public class V2AiTests
     public void Clean_RejectsTooLong() => Assert.Null(V2AiController.Clean(new string('a', 501)));
 
     [Fact]
+    public void Options_NoGoogleModels()
+    {
+        var o = new AiOptions();
+        foreach (var m in AiOptions.Split(o.ChatModels).Concat(AiOptions.Split(o.VisionModels)))
+            Assert.DoesNotMatch("(?i)gemini|gemma", m);
+    }
+
+    [Fact]
     public async Task ChatClient_SendsOpenAiRequestAndReadsTokens()
     {
         var http = new MockHttpMessageHandler();
         http.Expect(HttpMethod.Post, "http://127.0.0.1:3001/v1/chat/completions")
             .WithHeaders("Authorization", "Bearer freellmapi-test")
             .WithPartialContent("\"role\":\"system\"")
-            .WithPartialContent("\"model\":\"gemini-3.1-flash-lite\"")
+            .WithPartialContent("\"model\":\"qwen3.8-27b\"")
             .Respond(
                 "application/json",
                 "{\"choices\":[{\"message\":{\"content\":\"{\\\"text\\\":\\\"Bok\\\",\\\"steps\\\":[\\\"a\\\"]}\"}}],"
